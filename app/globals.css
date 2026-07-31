@@ -1,26 +1,78 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --rb-black: #0a0a0a;
+  --rb-black-soft: #141414;
+  --rb-red: #c8102e;
+  --rb-red-glow: #ff1f3d;
+  --rb-silver: #d4d4d8;
+  --rb-white: #ffffff;
+  --background: var(--rb-black);
+  --foreground: var(--rb-white);
 }
 
 @theme inline {
+  --color-rb-black: var(--rb-black);
+  --color-rb-black-soft: var(--rb-black-soft);
+  --color-rb-red: var(--rb-red);
+  --color-rb-red-glow: var(--rb-red-glow);
+  --color-rb-silver: var(--rb-silver);
+  --color-rb-white: var(--rb-white);
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
+  --font-display: var(--font-bebas);
+  --font-sans: var(--font-manrope);
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html {
+  background: var(--rb-black);
+  color: var(--rb-white);
+  overflow-x: hidden;
+  overscroll-behavior: none;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--rb-black);
+  color: var(--rb-white);
+  font-family: var(--font-manrope), system-ui, sans-serif;
+  min-height: 100%;
+  min-height: 100svh;
+  margin: 0;
+}
+
+.grain::before {
+  content: "";
+  pointer-events: none;
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  opacity: 0.035;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-repeat: repeat;
+  background-size: 180px 180px;
+}
+
+/* Técnica GTA VI: mask del logo que se encoge con scroll.
+   luminance: blanco del logo = visible, negro = transparente */
+#logo-mask {
+  background: #0a0a0a;
+  -webkit-mask-image: url("/logo-royal.webp");
+  mask-image: url("/logo-royal.webp");
+  -webkit-mask-position: center 42%;
+  mask-position: center 42%;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-size: clamp(5000vh, 3500%, 0vh);
+  mask-size: clamp(5000vh, 3500%, 0vh);
+  -webkit-mask-source-type: luminance;
+  mask-mode: luminance;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .grain::before {
+    display: none;
+  }
 }
