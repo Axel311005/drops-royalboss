@@ -7,7 +7,6 @@ import {
   useImperativeHandle,
   useRef,
   useState,
-  type PointerEvent,
 } from "react";
 import { ASSETS } from "@/lib/assets";
 import {
@@ -22,7 +21,6 @@ export type BackgroundVideoHandle = {
   play: (withAudio?: boolean) => void;
   setIntensity: (opacity: number, blurPx?: number) => void;
   unmute: () => void;
-  /** Llamar solo dentro de touchstart/pointerdown/click — Safari iOS exige play() síncrono. */
   activateFromUserGesture: () => void;
 };
 
@@ -67,53 +65,54 @@ function IconUnmuted({ className }: { className?: string }) {
   );
 }
 
-/**
- * autoPlay + muted + playsInline → video en todos los browsers.
- * Safari iOS: play() en gesto debe ser síncrono; rechazos de play() siempre con .catch().
- */
 const BackgroundVideo = forwardRef<BackgroundVideoHandle, Props>(
   function BackgroundVideo({ mounted, visible }, ref) {
     const videoRef = useRef<HTMLVideoElement>(null);
     const wrapRef = useRef<HTMLDivElement>(null);
+    const buttonRef = useRef<HTMLButtonElement>(null);
+    const mutedRef = useRef(true);
     const [failed, setFailed] = useState(false);
     const [muted, setMuted] = useState(true);
 
+    const setMutedState = useCallback((next: boolean) => {
+      mutedRef.current = next;
+      setMuted(next);
+    }, []);
+
     const tryPlayMuted = useCallback(() => {
       const video = videoRef.current;
-      if (!video || failed) return;
+      if (!video || failed || !mutedRef.current) return;
       void playMuted(video);
     }, [failed]);
+
+    const toggleSound = useCallback(() => {
+      const video = videoRef.current;
+      if (!video) return;
+
+      if (mutedRef.current) {
+        activateFromUserGesture(video);
+        setMutedState(false);
+      } else {
+        muteVideo(video);
+        setMutedState(true);
+      }
+    }, [setMutedState]);
 
     const activateAudio = useCallback(() => {
       const video = videoRef.current;
       if (!video) return;
       activateFromUserGesture(video);
-      setMuted(false);
-    }, []);
-
-    const toggleSound = useCallback(
-      (e: PointerEvent<HTMLButtonElement>) => {
-        // No preventDefault: en iOS cancela el click y rompe el toggle mute
-        e.stopPropagation();
-        const video = videoRef.current;
-        if (!video) return;
-
-        if (muted) {
-          activateFromUserGesture(video);
-          setMuted(false);
-        } else {
-          muteVideo(video);
-          setMuted(true);
-        }
-      },
-      [muted],
-    );
+      setMutedState(false);
+    }, [setMutedState]);
 
     useImperativeHandle(
       ref,
       () => ({
         play() {
-          tryPlayMuted();
+          const video = videoRef.current;
+          if (!video || failed) return;
+          if (mutedRef.current) void playMuted(video);
+          else video.play()?.catch(() => {});
         },
         unmute() {
           activateAudio();
@@ -128,8 +127,31 @@ const BackgroundVideo = forwardRef<BackgroundVideoHandle, Props>(
           el.style.filter = "none";
         },
       }),
-      [activateAudio, tryPlayMuted],
+      [activateAudio, failed],
     );
+
+    // Listener nativo — Safari iOS no confía en eventos sintéticos de React para play()+audio
+    useEffect(() => {
+      const btn = buttonRef.current;
+      if (!btn || !visible) return;
+
+      let lastToggle = 0;
+
+      const onToggle = (e: Event) => {
+        e.stopPropagation();
+        if (Date.now() - lastToggle < 350) return;
+        lastToggle = Date.now();
+        toggleSound();
+      };
+
+      btn.addEventListener("touchstart", onToggle, { passive: true });
+      btn.addEventListener("click", onToggle);
+
+      return () => {
+        btn.removeEventListener("touchstart", onToggle);
+        btn.removeEventListener("click", onToggle);
+      };
+    }, [visible, toggleSound]);
 
     useEffect(() => {
       if (!mounted) return;
@@ -148,10 +170,11 @@ const BackgroundVideo = forwardRef<BackgroundVideoHandle, Props>(
       video.addEventListener("canplaythrough", onReady);
       document.addEventListener("visibilitychange", onVisibility);
 
+      mutedRef.current = true;
+      setMutedState(true);
       video.muted = true;
       video.defaultMuted = true;
       video.setAttribute("muted", "");
-      setMuted(true);
 
       tryPlayMuted();
       const timers = [80, 250, 700, 1500].map((ms) =>
@@ -166,7 +189,16 @@ const BackgroundVideo = forwardRef<BackgroundVideoHandle, Props>(
         video.removeEventListener("canplaythrough", onReady);
         document.removeEventListener("visibilitychange", onVisibility);
       };
-    }, [mounted, tryPlayMuted]);
+    }, [mounted, tryPlayMuted, setMutedState]);
+
+    useEffect(() => {
+      if (!mounted || !visible) return;
+      tryPlayMuted();
+      const timers = [0, 250, 600, 1200].map((ms) =>
+        window.setTimeout(tryPlayMuted, ms),
+      );
+      return () => timers.forEach(clearTimeout);
+    }, [mounted, visible, tryPlayMuted]);
 
     if (!mounted) return null;
 
@@ -197,7 +229,7 @@ const BackgroundVideo = forwardRef<BackgroundVideoHandle, Props>(
               src={ASSETS.productVideo}
               poster={ASSETS.img1}
               autoPlay
-              muted
+              muted={muted}
               playsInline
               loop
               preload="auto"
@@ -210,9 +242,9 @@ const BackgroundVideo = forwardRef<BackgroundVideoHandle, Props>(
 
         {visible && (
           <button
+            ref={buttonRef}
             type="button"
-            onPointerDown={toggleSound}
-            onTouchStart={(e) => e.stopPropagation()}
+            data-sound-btn
             className="fixed bottom-[max(1.25rem,env(safe-area-inset-bottom))] right-[max(1rem,env(safe-area-inset-right))] z-[60] flex h-12 w-12 items-center justify-center rounded-full border border-white/25 bg-black/55 text-rb-white backdrop-blur-sm active:scale-95 touch-manipulation"
             aria-label={muted ? "Activar sonido" : "Silenciar"}
             aria-pressed={!muted}

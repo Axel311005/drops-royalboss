@@ -70,7 +70,9 @@ export default function RoyalCrownExperience() {
   useEffect(() => {
     if (phase !== "playing") return;
 
-    const resumePlayback = () => {
+    const resumePlayback = (e: Event) => {
+      const target = e.target;
+      if (target instanceof Element && target.closest("[data-sound-btn]")) return;
       videoRef.current?.play();
     };
 
