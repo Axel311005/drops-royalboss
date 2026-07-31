@@ -9,9 +9,14 @@ import {
 } from "react";
 import { ASSETS } from "@/lib/assets";
 import {
-  prepareVideoEl,
-  tryPlayVideo,
-  unmuteAndPlay,
+  ensureSharedVideo,
+  getSharedVideo,
+  hideSharedVideo,
+  playMuted,
+  playNowWithAudio,
+  resumeIfPaused,
+  setSharedVideoIntensity,
+  showSharedVideo,
   unlockAudioOnTap,
 } from "@/lib/video";
 
@@ -27,98 +32,117 @@ type Props = {
 };
 
 const BackgroundVideo = forwardRef<BackgroundVideoHandle, Props>(
-  function BackgroundVideo({ mounted, visible, withAudio = false }, ref) {
-    const videoRef = useRef<HTMLVideoElement>(null);
+  function BackgroundVideo({ mounted, visible, withAudio = true }, ref) {
+    const fallbackRef = useRef<HTMLVideoElement>(null);
     const wrapRef = useRef<HTMLDivElement>(null);
     const [failed, setFailed] = useState(false);
-    const [showPosterFallback, setShowPosterFallback] = useState(false);
-    const audioRef = useRef(withAudio);
+    const [useFallback, setUseFallback] = useState(false);
+    const unlockCleanup = useRef<(() => void) | null>(null);
 
-    useEffect(() => {
-      audioRef.current = withAudio;
-    }, [withAudio]);
+    const resolveVideo = () => getSharedVideo() ?? fallbackRef.current;
 
     useImperativeHandle(ref, () => ({
-      play(nextAudio) {
-        const useAudio = nextAudio ?? audioRef.current;
-        if (useAudio) unmuteAndPlay(videoRef.current);
-        else tryPlayVideo(videoRef.current, { withAudio: false });
+      play(withAudioFlag = true) {
+        const video = resolveVideo();
+        if (!video) return;
+        if (withAudioFlag) void playNowWithAudio(video);
+        else void playMuted(video);
       },
       setIntensity(opacity: number) {
+        const shared = getSharedVideo();
+        if (shared && !useFallback) {
+          setSharedVideoIntensity(opacity);
+          return;
+        }
         const el = wrapRef.current;
         if (!el) return;
-        el.style.opacity = String(Math.max(opacity, 0.01));
+        el.style.opacity = String(Math.max(opacity, 0.05));
         el.style.filter = "none";
       },
     }));
 
+    // Montaje: elemento compartido + preload muted (sin spam de unmute)
     useEffect(() => {
       if (!mounted) return;
-      const video = videoRef.current;
-      if (!video) return;
 
-      prepareVideoEl(video, { withAudio: false });
-      try {
-        video.load();
-      } catch {
-        /* ignore */
+      const video = ensureSharedVideo(ASSETS.productVideo);
+      if (!video) {
+        setUseFallback(true);
+        return;
       }
 
-      const onError = () => {
-        setFailed(true);
-        setShowPosterFallback(true);
-      };
-      const onPlaying = () => setShowPosterFallback(false);
-
+      const onError = () => setFailed(true);
       video.addEventListener("error", onError);
-      video.addEventListener("playing", onPlaying);
-
-      // Precarga en silencio
-      tryPlayVideo(video, { withAudio: false });
+      hideSharedVideo();
+      void playMuted(video);
 
       return () => {
         video.removeEventListener("error", onError);
-        video.removeEventListener("playing", onPlaying);
       };
     }, [mounted]);
 
+    // Visible: mostrar + intentar audio una vez; si falla, queda muted reproduciendo
     useEffect(() => {
-      if (!visible || !mounted) return;
-      const video = videoRef.current;
-      if (!video) return;
+      if (!mounted || !visible) return;
 
-      // Al hacerse visible: audio YA (sin esperar scroll)
-      const kick = () => {
-        if (withAudio) unmuteAndPlay(video);
-        else tryPlayVideo(video, { withAudio: false });
+      if (getSharedVideo()) {
+        showSharedVideo();
+      }
+
+      const run = async () => {
+        const v = resolveVideo();
+        if (!v) return;
+        if (withAudio) await playNowWithAudio(v);
+        else await playMuted(v);
       };
 
-      kick();
-      const retries = [50, 150, 350, 700, 1200].map((ms) =>
-        window.setTimeout(kick, ms),
+      void run();
+
+      const retries = [150, 500].map((ms) =>
+        window.setTimeout(() => {
+          const v = resolveVideo();
+          if (!v) return;
+          if (v.paused) void playMuted(v);
+          else if (withAudio && v.muted) void playNowWithAudio(v);
+        }, ms),
       );
 
-      // Fallback solo por tap/click si el browser bloquea autoplay con sonido
-      const cleanupTap = withAudio ? unlockAudioOnTap(video) : () => {};
+      unlockCleanup.current?.();
+      unlockCleanup.current = withAudio
+        ? unlockAudioOnTap(resolveVideo())
+        : null;
+
+      const onPause = () => {
+        const v = resolveVideo();
+        if (!v || !visible) return;
+        window.setTimeout(() => resumeIfPaused(v), 60);
+      };
+      const v = resolveVideo();
+      v?.addEventListener("pause", onPause);
 
       return () => {
         retries.forEach(clearTimeout);
-        cleanupTap();
+        unlockCleanup.current?.();
+        unlockCleanup.current = null;
+        v?.removeEventListener("pause", onPause);
       };
-    }, [visible, mounted, withAudio]);
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [visible, mounted, withAudio, useFallback]);
 
     if (!mounted) return null;
-
-    const wrapOpacity = visible ? 1 : 0.01;
 
     return (
       <div
         ref={wrapRef}
         aria-hidden
-        className="pointer-events-none fixed inset-0 z-0 bg-rb-black transition-opacity duration-500"
-        style={{ opacity: wrapOpacity }}
+        className="pointer-events-none fixed inset-0 z-0 bg-rb-black"
+        style={{
+          // Shared video está en body; este wrap solo cubre fallback/poster
+          opacity: visible && (useFallback || failed) ? 1 : 0,
+          visibility: visible && (useFallback || failed) ? "visible" : "hidden",
+        }}
       >
-        {(failed || showPosterFallback) && (
+        {failed && (
           // eslint-disable-next-line @next/next/no-img-element
           <img
             src={ASSETS.img1}
@@ -127,21 +151,21 @@ const BackgroundVideo = forwardRef<BackgroundVideoHandle, Props>(
           />
         )}
 
-        <video
-          ref={videoRef}
-          className="absolute inset-0 h-full w-full object-cover md:inset-y-0 md:left-1/2 md:right-auto md:h-full md:w-auto md:max-w-[min(100vw,56.25vh)] md:-translate-x-1/2"
-          poster={ASSETS.img1}
-          preload="auto"
-          playsInline
-          loop
-          autoPlay
-          muted={!withAudio}
-          controls={false}
-          disablePictureInPicture
-          disableRemotePlayback
-        >
-          <source src={ASSETS.productVideo} type="video/mp4" />
-        </video>
+        {useFallback && (
+          <video
+            ref={fallbackRef}
+            className="absolute inset-0 h-full w-full object-cover md:inset-y-0 md:left-1/2 md:right-auto md:h-full md:w-auto md:max-w-[min(100vw,56.25vh)] md:-translate-x-1/2"
+            poster={ASSETS.img1}
+            src={ASSETS.productVideo}
+            preload="auto"
+            playsInline
+            muted
+            loop
+            autoPlay
+            controls={false}
+            disablePictureInPicture
+          />
+        )}
       </div>
     );
   },

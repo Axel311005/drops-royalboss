@@ -10,6 +10,7 @@ import {
   markNfcAuthenticated,
   supportsWebNfc,
 } from "@/lib/nfc";
+import { primeVideoFromUserGesture } from "@/lib/video";
 
 type Status = "idle" | "scanning" | "invalid";
 
@@ -70,6 +71,9 @@ export default function ScanAndPlay() {
   }, [status]);
 
   const startScan = useCallback(async () => {
+    // CRÍTICO: dentro del click — desbloquea audio para Chrome/Android
+    primeVideoFromUserGesture();
+
     const myId = ++scanIdRef.current;
     setReadValue("");
     setLabelIdx(0);
@@ -308,6 +312,7 @@ export default function ScanAndPlay() {
             <button
               type="button"
               onClick={() => {
+                primeVideoFromUserGesture();
                 resetToIdle();
                 window.setTimeout(() => startScan(), 120);
               }}

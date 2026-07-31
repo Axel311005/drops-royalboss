@@ -15,7 +15,9 @@ import { hasNfcAuth, markNfcAuthenticated } from "@/lib/nfc";
 type Phase = "checking" | "authenticating" | "playing";
 
 /**
- * Al entrar a /RoyalCrown: autenticación → video + audio al instante (sin scroll).
+ * 1) Verificando / Es auténtica
+ * 2) Solo video a pantalla completa (sin texto)
+ * 3) Al scrollear → certificado y el resto
  */
 export default function RoyalCrownExperience() {
   const router = useRouter();
@@ -52,20 +54,18 @@ export default function RoyalCrownExperience() {
   const startPlayback = useCallback(() => {
     videoRef.current?.setIntensity(1, 0);
     videoRef.current?.play(true);
-    // Reintentos inmediatos de audio (sin scroll)
-    [0, 80, 200, 400, 800].forEach((ms) => {
-      window.setTimeout(() => videoRef.current?.play(true), ms);
-    });
   }, []);
 
   const onAuthComplete = useCallback(() => {
     setPhase("playing");
-    requestAnimationFrame(startPlayback);
-  }, [startPlayback]);
+  }, []);
 
   useEffect(() => {
     if (phase !== "playing") return;
     startPlayback();
+    // Un reintento suave — BackgroundVideo ya maneja play sin spam de unmute
+    const t = window.setTimeout(startPlayback, 200);
+    return () => window.clearTimeout(t);
   }, [phase, startPlayback]);
 
   if (phase === "checking") {
@@ -73,8 +73,6 @@ export default function RoyalCrownExperience() {
   }
 
   const playing = phase === "playing";
-  // Montar durante autenticación para precargar; visible al terminar
-  const videoMounted = phase === "authenticating" || phase === "playing";
 
   return (
     <div className="grain relative min-h-svh bg-rb-black text-rb-white">
@@ -84,13 +82,20 @@ export default function RoyalCrownExperience() {
 
       <BackgroundVideo
         ref={videoRef}
-        mounted={videoMounted}
+        mounted={phase === "authenticating" || playing}
         visible={playing}
         withAudio
       />
 
       {playing && (
         <>
+          {/* Primer viewport: SOLO video, sin textos */}
+          <div
+            className="relative z-10 h-[100svh] w-full"
+            aria-hidden
+          />
+
+          {/* Debajo, al scrollear: certificado y resto */}
           <Hero active />
           <StoryOverlays active />
           <DetailZoom active videoRef={videoRef} />
