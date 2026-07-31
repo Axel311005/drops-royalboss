@@ -4,9 +4,10 @@ import { ASSETS } from "@/lib/assets";
 
 export const metadata: Metadata = {
   title: "Royal Boss — Escaneá tu gorra",
-  description: "Acercá el teléfono al chip NFC de tu Royal Boss.",
+  description: "Escaneá el chip NFC de tu Royal Boss.",
 };
 
+/** Link para mandar. Acá se abre el lector NFC (nativo en Android Chrome). */
 export default function Home() {
   return (
     <>

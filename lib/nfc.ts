@@ -1,6 +1,8 @@
 import { LINKS } from "@/lib/assets";
 
+/** Valor que debe tener grabado el chip NFC */
 export const NFC_EXPECTED_URL = LINKS.certificate; // https://royal-boss.com/RoyalCrown
+
 export const NFC_AUTH_KEY = "rb-nfc-authenticated";
 export const NFC_AUDIO_KEY = "rb-nfc-audio-unlock";
 
@@ -8,21 +10,27 @@ export function normalizeNfcUrl(raw: string): string {
   try {
     const u = new URL(raw.trim());
     u.hash = "";
-    u.search = "";
-    let path = u.pathname.replace(/\/+$/, "");
-    return `${u.protocol}//${u.host}${path}`;
+    // Mantener path; ignorar query extraña salvo comparación de path
+    let path = u.pathname.replace(/\/+$/, "") || "";
+    return `${u.protocol}//${u.host}${path}`.toLowerCase();
   } catch {
-    return raw.trim().replace(/\/+$/, "");
+    return raw.trim().replace(/\/+$/, "").toLowerCase();
   }
 }
 
+/** El tag es válido si apunta a /RoyalCrown (con o sin www, con o sin query) */
 export function isValidRoyalCrownUrl(raw: string): boolean {
-  const got = normalizeNfcUrl(raw).toLowerCase();
-  const expected = normalizeNfcUrl(NFC_EXPECTED_URL).toLowerCase();
-  // Acepta con o sin www, y path exacto /RoyalCrown
-  const gotPath = got.replace(/^https?:\/\/(www\.)?/, "");
-  const expPath = expected.replace(/^https?:\/\/(www\.)?/, "");
-  return gotPath === expPath;
+  try {
+    const u = new URL(raw.trim());
+    const host = u.hostname.replace(/^www\./, "");
+    const path = u.pathname.replace(/\/+$/, "");
+    return (
+      (host === "royal-boss.com" || host === "localhost" || host.endsWith(".vercel.app")) &&
+      path === "/RoyalCrown"
+    );
+  } catch {
+    return /royal-boss\.com\/RoyalCrown/i.test(raw);
+  }
 }
 
 export function markNfcAuthenticated(withAudioGesture = true) {
@@ -34,6 +42,12 @@ export function markNfcAuthenticated(withAudioGesture = true) {
 export function hasNfcAuth(): boolean {
   if (typeof sessionStorage === "undefined") return false;
   return sessionStorage.getItem(NFC_AUTH_KEY) === "1";
+}
+
+export function clearNfcAuth() {
+  if (typeof sessionStorage === "undefined") return;
+  sessionStorage.removeItem(NFC_AUTH_KEY);
+  sessionStorage.removeItem(NFC_AUDIO_KEY);
 }
 
 export function consumeAudioUnlock(): boolean {
@@ -62,10 +76,6 @@ type NdefRecordLike = {
 
 type NdefMessageLike = {
   records: NdefRecordLike[];
-};
-
-type NdefReadingEventLike = {
-  message: NdefMessageLike;
 };
 
 export function decodeNdefRecords(message: NdefMessageLike): string[] {
@@ -113,5 +123,3 @@ export function decodeNdefRecords(message: NdefMessageLike): string[] {
   }
   return out;
 }
-
-export type { NdefReadingEventLike };

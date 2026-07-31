@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import BackgroundVideo, {
   type BackgroundVideoHandle,
 } from "@/components/BackgroundVideo";
@@ -9,16 +10,52 @@ import Hero from "@/components/Hero";
 import StoryOverlays from "@/components/StoryOverlays";
 import DetailZoom from "@/components/DetailZoom";
 import ClubFooter from "@/components/ClubFooter";
+import { hasNfcAuth, markNfcAuthenticated } from "@/lib/nfc";
 
-type Phase = "authenticating" | "playing";
+type Phase = "checking" | "authenticating" | "playing";
 
 /**
- * Valor del chip: /RoyalCrown
- * Android + iPhone: al abrir esta URL → “Es auténtica” → video automático.
+ * /RoyalCrown solo si el NFC fue leído:
+ * - Web NFC en / validó la URL y guardó sesión, o
+ * - El sistema abrió esta URL desde el chip (tap nativo iOS/Android).
+ * Si entrás a mano sin eso → volvés a /.
  */
 export default function RoyalCrownExperience() {
-  const [phase, setPhase] = useState<Phase>("authenticating");
+  const router = useRouter();
+  const [phase, setPhase] = useState<Phase>("checking");
   const videoRef = useRef<BackgroundVideoHandle>(null);
+  const allowedRef = useRef(false);
+
+  useEffect(() => {
+    if (allowedRef.current) return;
+
+    // 1) Vino del escaneo Web NFC en /
+    if (hasNfcAuth()) {
+      allowedRef.current = true;
+      setPhase("authenticating");
+      return;
+    }
+
+    // 2) Tap nativo del SO: el chip tiene https://royal-boss.com/RoyalCrown
+    //    y el sistema abre esta página (no hay referrer del propio sitio).
+    const ref = typeof document !== "undefined" ? document.referrer : "";
+    const fromOwnSite =
+      Boolean(ref) &&
+      (ref.includes("royal-boss.com") ||
+        ref.includes("localhost") ||
+        ref.includes("127.0.0.1"));
+
+    if (!fromOwnSite) {
+      // Entrada externa / NFC del sistema → válido
+      markNfcAuthenticated(true);
+      allowedRef.current = true;
+      setPhase("authenticating");
+      return;
+    }
+
+    // Entró desde el mismo sitio sin escanear → bloqueado
+    router.replace("/");
+  }, [router]);
 
   const onAuthComplete = useCallback(() => {
     setPhase("playing");
@@ -34,7 +71,6 @@ export default function RoyalCrownExperience() {
     videoRef.current?.play(true);
   }, [phase]);
 
-  // Desbloquear audio en el primer toque (sobre todo iPhone)
   useEffect(() => {
     const unlock = () => videoRef.current?.play(true);
     const opts: AddEventListenerOptions = { capture: true, passive: true };
@@ -43,6 +79,10 @@ export default function RoyalCrownExperience() {
     return () =>
       evs.forEach((e) => window.removeEventListener(e, unlock, opts));
   }, []);
+
+  if (phase === "checking") {
+    return <div className="min-h-svh bg-rb-black" />;
+  }
 
   const playing = phase === "playing";
 
