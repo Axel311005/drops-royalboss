@@ -12,7 +12,7 @@ import {
   prepareVideoEl,
   tryPlayVideo,
   unmuteAndPlay,
-  unlockVideoOnGesture,
+  unlockAudioOnTap,
 } from "@/lib/video";
 
 export type BackgroundVideoHandle = {
@@ -23,7 +23,6 @@ export type BackgroundVideoHandle = {
 type Props = {
   mounted: boolean;
   visible: boolean;
-  /** Reproducir con sonido (tras gesto NFC / tap) */
   withAudio?: boolean;
 };
 
@@ -58,7 +57,7 @@ const BackgroundVideo = forwardRef<BackgroundVideoHandle, Props>(
       const video = videoRef.current;
       if (!video) return;
 
-      prepareVideoEl(video, { withAudio: audioRef.current });
+      prepareVideoEl(video, { withAudio: false });
       try {
         video.load();
       } catch {
@@ -74,36 +73,39 @@ const BackgroundVideo = forwardRef<BackgroundVideoHandle, Props>(
       video.addEventListener("error", onError);
       video.addEventListener("playing", onPlaying);
 
-      const cleanupUnlock = unlockVideoOnGesture(video, {
-        withAudio: audioRef.current,
-      });
-
-      const retries = [50, 200, 600, 1500].map((ms) =>
-        window.setTimeout(
-          () =>
-            tryPlayVideo(video, { withAudio: audioRef.current }),
-          ms,
-        ),
-      );
+      // Precarga en silencio
+      tryPlayVideo(video, { withAudio: false });
 
       return () => {
-        cleanupUnlock();
-        retries.forEach(clearTimeout);
         video.removeEventListener("error", onError);
         video.removeEventListener("playing", onPlaying);
       };
     }, [mounted]);
 
     useEffect(() => {
-      if (!visible) return;
-      if (withAudio) unmuteAndPlay(videoRef.current);
-      else tryPlayVideo(videoRef.current, { withAudio: false });
-      const t = window.setTimeout(() => {
-        if (withAudio) unmuteAndPlay(videoRef.current);
-        else tryPlayVideo(videoRef.current, { withAudio: false });
-      }, 300);
-      return () => clearTimeout(t);
-    }, [visible, withAudio]);
+      if (!visible || !mounted) return;
+      const video = videoRef.current;
+      if (!video) return;
+
+      // Al hacerse visible: audio YA (sin esperar scroll)
+      const kick = () => {
+        if (withAudio) unmuteAndPlay(video);
+        else tryPlayVideo(video, { withAudio: false });
+      };
+
+      kick();
+      const retries = [50, 150, 350, 700, 1200].map((ms) =>
+        window.setTimeout(kick, ms),
+      );
+
+      // Fallback solo por tap/click si el browser bloquea autoplay con sonido
+      const cleanupTap = withAudio ? unlockAudioOnTap(video) : () => {};
+
+      return () => {
+        retries.forEach(clearTimeout);
+        cleanupTap();
+      };
+    }, [visible, mounted, withAudio]);
 
     if (!mounted) return null;
 
@@ -133,7 +135,6 @@ const BackgroundVideo = forwardRef<BackgroundVideoHandle, Props>(
           playsInline
           loop
           autoPlay
-          // muted solo si no hay audio; con audio el gesto NFC desbloquea
           muted={!withAudio}
           controls={false}
           disablePictureInPicture

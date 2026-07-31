@@ -1,14 +1,4 @@
-/** Helpers de video — Safari / Chrome / audio post-gesto NFC */
-
-export function isLikelySafari(): boolean {
-  if (typeof navigator === "undefined") return false;
-  const ua = navigator.userAgent;
-  const isIOS =
-    /iPad|iPhone|iPod/.test(ua) ||
-    (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
-  const isSafari = /^((?!chrome|android).)*safari/i.test(ua);
-  return isIOS || isSafari;
-}
+/** Helpers de video — autoplay + audio al entrar (sin depender del scroll) */
 
 export function prepareVideoEl(
   video: HTMLVideoElement,
@@ -37,29 +27,46 @@ export function tryPlayVideo(
   video: HTMLVideoElement | null | undefined,
   opts: { withAudio?: boolean } = {},
 ) {
-  if (!video) return Promise.resolve();
+  if (!video) return Promise.resolve(false);
   prepareVideoEl(video, opts);
-  return video.play().catch(() => {
-    // Si falla con audio, intentar muted y desmutear en el próximo gesto
-    if (opts.withAudio) {
-      prepareVideoEl(video, { withAudio: false });
-      return video.play().then(() => {
-        // Se desmuteará cuando el gesto lo permita
-      }).catch(() => {});
-    }
-  });
+  return video
+    .play()
+    .then(() => true)
+    .catch(() => false);
 }
 
-export function unmuteAndPlay(video: HTMLVideoElement | null | undefined) {
-  if (!video) return Promise.resolve();
-  prepareVideoEl(video, { withAudio: true });
-  return video.play().catch(() => {});
-}
-
-/** Desbloquea play (y audio si se pide) con el primer gesto del usuario */
-export function unlockVideoOnGesture(
+/** Intenta audio ya; si el browser bloquea, deja video muted y reintenta unmute. */
+export async function unmuteAndPlay(
   video: HTMLVideoElement | null | undefined,
-  opts: { withAudio?: boolean; onUnlocked?: () => void } = {},
+): Promise<boolean> {
+  if (!video) return false;
+
+  prepareVideoEl(video, { withAudio: true });
+  try {
+    await video.play();
+    return !video.muted;
+  } catch {
+    // Fallback: video visible ya (muted), luego desmutear
+    prepareVideoEl(video, { withAudio: false });
+    try {
+      await video.play();
+    } catch {
+      return false;
+    }
+    prepareVideoEl(video, { withAudio: true });
+    try {
+      await video.play();
+      return true;
+    } catch {
+      return false;
+    }
+  }
+}
+
+/** Solo toque/click — NO scroll (el audio no debe esperar al scroll) */
+export function unlockAudioOnTap(
+  video: HTMLVideoElement | null | undefined,
+  onUnlocked?: () => void,
 ): () => void {
   if (!video || typeof window === "undefined") return () => {};
 
@@ -67,29 +74,17 @@ export function unlockVideoOnGesture(
   const unlock = () => {
     if (done) return;
     done = true;
-    const run = opts.withAudio
-      ? unmuteAndPlay(video)
-      : tryPlayVideo(video, { withAudio: false });
-    run.then(() => opts.onUnlocked?.());
+    unmuteAndPlay(video).then(() => onUnlocked?.());
     cleanup();
   };
 
-  const listenerOpts: AddEventListenerOptions = { capture: true, passive: true };
-  const events = [
-    "touchstart",
-    "touchend",
-    "pointerdown",
-    "scroll",
-    "wheel",
-    "click",
-  ] as const;
+  const opts: AddEventListenerOptions = { capture: true, passive: true };
+  const events = ["touchstart", "pointerdown", "click"] as const;
 
   const cleanup = () => {
-    events.forEach((e) => window.removeEventListener(e, unlock, listenerOpts));
+    events.forEach((e) => window.removeEventListener(e, unlock, opts));
   };
 
-  events.forEach((e) => window.addEventListener(e, unlock, listenerOpts));
-  tryPlayVideo(video, { withAudio: opts.withAudio });
-
+  events.forEach((e) => window.addEventListener(e, unlock, opts));
   return cleanup;
 }
