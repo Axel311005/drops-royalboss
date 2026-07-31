@@ -9,6 +9,7 @@ import {
   decodeNdefRecords,
   isValidRoyalCrownUrl,
   markNfcAuthenticated,
+  NFC_EXPECTED_URL,
   supportsWebNfc,
 } from "@/lib/nfc";
 
@@ -16,10 +17,16 @@ type Status = "idle" | "scanning-nfc" | "scanning-qr" | "invalid";
 
 const QR_READER_ID = "rb-qr-reader";
 
+/**
+ * NFC y QR comparten el mismo valor válido:
+ * https://royal-boss.com/RoyalCrown
+ * Si coincide → /RoyalCrown. Si no → invalid.
+ */
 function isValidScanValue(raw: string): boolean {
   const cleaned = raw.trim().replace(/^\uFEFF/, "");
   return (
     isValidRoyalCrownUrl(cleaned) ||
+    cleaned === NFC_EXPECTED_URL ||
     /royal-boss\.com\/royalcrown/i.test(cleaned)
   );
 }
