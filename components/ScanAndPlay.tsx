@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { motion } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
 import { ASSETS } from "@/lib/assets";
 import {
   decodeNdefRecords,
@@ -11,21 +11,18 @@ import {
   supportsWebNfc,
 } from "@/lib/nfc";
 
-type Status = "idle" | "scanning" | "error";
+type Status = "idle" | "scanning" | "invalid" | "error";
 
 /**
  * Link que se manda: /
- * Al escanear → prompt NATIVO del sistema (Chrome Android / Web NFC).
- * Solo si el valor del tag es https://royal-boss.com/RoyalCrown → entra a /RoyalCrown.
- *
- * Nota: Safari iPhone NO tiene Web NFC (no puede mostrar el sheet tipo NFC Tools
- * desde una web). En iPhone el chip debe abrirse con el lector del sistema
- * (notificación nativa) hacia /RoyalCrown.
+ * Si el NFC no es https://royal-boss.com/RoyalCrown → validación fallida.
+ * Si coincide → /RoyalCrown
  */
 export default function ScanAndPlay() {
   const router = useRouter();
   const [status, setStatus] = useState<Status>("idle");
   const [hint, setHint] = useState("");
+  const [readValue, setReadValue] = useState("");
   const abortRef = useRef<AbortController | null>(null);
 
   const enterRoyalCrown = useCallback(() => {
@@ -38,8 +35,15 @@ export default function ScanAndPlay() {
     router.push("/RoyalCrown");
   }, [router]);
 
+  const resetToIdle = useCallback(() => {
+    setStatus("idle");
+    setHint("");
+    setReadValue("");
+  }, []);
+
   const startScan = useCallback(async () => {
     setHint("");
+    setReadValue("");
     try {
       abortRef.current?.abort();
     } catch {
@@ -78,12 +82,21 @@ export default function ScanAndPlay() {
               isValidRoyalCrownUrl(v) ||
               /royal-boss\.com\/RoyalCrown/i.test(v),
           );
+
           if (ok) {
             enterRoyalCrown();
             return;
           }
-          setStatus("error");
-          setHint("Etiqueta no válida. Debe ser una Royal Boss Original.");
+
+          // Otro valor → validación fallida (no entra a RoyalCrown)
+          try {
+            ac.abort();
+          } catch {
+            /* ignore */
+          }
+          setReadValue(values[0] ?? "(sin URL legible)");
+          setStatus("invalid");
+          setHint("Validación fallida");
         },
       );
 
@@ -92,7 +105,6 @@ export default function ScanAndPlay() {
         setHint("Error al leer. Acercá de nuevo la etiqueta.");
       });
 
-      // Esto dispara el sheet NATIVO de Android Chrome (“Ready to scan / Acerca una etiqueta”)
       await reader.scan({ signal: ac.signal });
     } catch (err) {
       const name = err instanceof Error ? err.name : "";
@@ -143,14 +155,18 @@ export default function ScanAndPlay() {
               }}
             />
           ))}
-        <div className="relative z-10 flex h-24 w-24 items-center justify-center rounded-full border border-rb-red/60">
+        <div
+          className={`relative z-10 flex h-24 w-24 items-center justify-center rounded-full border ${
+            status === "invalid" ? "border-rb-red bg-rb-red/15" : "border-rb-red/60"
+          }`}
+        >
           <span className="font-mono text-[10px] uppercase tracking-[0.2em]">
-            NFC
+            {status === "invalid" ? "✕" : "NFC"}
           </span>
         </div>
       </div>
 
-      {hint ? (
+      {status === "error" && hint ? (
         <p className="mt-8 max-w-sm text-center text-sm text-rb-red">{hint}</p>
       ) : (
         <p className="mt-8 min-h-[1.25rem]" />
@@ -158,11 +174,57 @@ export default function ScanAndPlay() {
 
       <button
         type="button"
-        onClick={startScan}
+        onClick={status === "invalid" ? resetToIdle : startScan}
         className="mt-4 min-h-12 w-full max-w-xs border border-rb-red px-6 py-3 font-[family-name:var(--font-bebas)] text-lg tracking-wider text-rb-white transition-colors hover:bg-rb-red"
       >
-        {status === "scanning" ? "Escaneando…" : "Escanear"}
+        {status === "scanning"
+          ? "Escaneando…"
+          : status === "invalid"
+            ? "Volver a intentar"
+            : "Escanear"}
       </button>
+
+      {/* Overlay de validación fallida */}
+      <AnimatePresence>
+        {status === "invalid" && (
+          <motion.div
+            className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-rb-black/95 px-6"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+          >
+            <div className="flex h-20 w-20 items-center justify-center rounded-full border-2 border-rb-red">
+              <span className="font-[family-name:var(--font-bebas)] text-4xl text-rb-red">
+                ✕
+              </span>
+            </div>
+            <p className="mt-8 font-mono text-[11px] uppercase tracking-[0.35em] text-rb-red">
+              Validación fallida
+            </p>
+            <h2 className="mt-3 text-center font-[family-name:var(--font-bebas)] text-3xl tracking-wide text-rb-white sm:text-4xl">
+              No es auténtica
+            </h2>
+            <p className="mt-4 max-w-sm text-center text-sm leading-relaxed text-rb-silver">
+              El chip leído no corresponde a una Royal Boss Original.
+            </p>
+            {readValue ? (
+              <p className="mt-3 max-w-xs break-all text-center font-mono text-[9px] tracking-wide text-rb-silver/50">
+                Valor leído: {readValue}
+              </p>
+            ) : null}
+            <button
+              type="button"
+              onClick={() => {
+                resetToIdle();
+                window.setTimeout(() => startScan(), 100);
+              }}
+              className="mt-10 min-h-12 w-full max-w-xs border border-rb-red px-6 py-3 font-[family-name:var(--font-bebas)] text-lg tracking-wider text-rb-white hover:bg-rb-red"
+            >
+              Escanear de nuevo
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </main>
   );
 }
