@@ -1,62 +1,65 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
-import AuthReveal from "@/components/AuthReveal";
+import { useCallback, useEffect, useRef, useState } from "react";
 import BackgroundVideo, {
   type BackgroundVideoHandle,
 } from "@/components/BackgroundVideo";
-import LogoMaskIntro from "@/components/LogoMaskIntro";
+import AuthenticatingOverlay from "@/components/AuthenticatingOverlay";
 import Hero from "@/components/Hero";
 import StoryOverlays from "@/components/StoryOverlays";
 import DetailZoom from "@/components/DetailZoom";
 import ClubFooter from "@/components/ClubFooter";
 
-type Phase = "auth" | "intro" | "experience";
+type Phase = "authenticating" | "playing";
 
+/**
+ * Valor del chip: /RoyalCrown
+ * Android + iPhone: al abrir esta URL → “Es auténtica” → video automático.
+ */
 export default function RoyalCrownExperience() {
-  const [phase, setPhase] = useState<Phase>("auth");
+  const [phase, setPhase] = useState<Phase>("authenticating");
   const videoRef = useRef<BackgroundVideoHandle>(null);
-  const introDone = useRef(false);
 
   const onAuthComplete = useCallback(() => {
-    setPhase("intro");
-    // Montamos el video ya en intro para precargar + desbloquear con el scroll
-    requestAnimationFrame(() => videoRef.current?.play());
-  }, []);
-
-  const onIntroComplete = useCallback(() => {
-    if (introDone.current) return;
-    introDone.current = true;
-    window.scrollTo(0, 0);
-    setPhase("experience");
+    setPhase("playing");
     requestAnimationFrame(() => {
-      videoRef.current?.play();
+      videoRef.current?.play(true);
       videoRef.current?.setIntensity(1, 0);
     });
-    // Segundo intento tras el paint (Safari)
-    window.setTimeout(() => videoRef.current?.play(), 250);
+    window.setTimeout(() => videoRef.current?.play(true), 200);
   }, []);
 
-  const videoMounted = phase === "intro" || phase === "experience";
-  const videoVisible = phase === "experience";
-  const showContent = phase === "experience";
+  useEffect(() => {
+    if (phase !== "playing") return;
+    videoRef.current?.play(true);
+  }, [phase]);
+
+  // Desbloquear audio en el primer toque (sobre todo iPhone)
+  useEffect(() => {
+    const unlock = () => videoRef.current?.play(true);
+    const opts: AddEventListenerOptions = { capture: true, passive: true };
+    const evs = ["touchstart", "pointerdown", "click"] as const;
+    evs.forEach((e) => window.addEventListener(e, unlock, opts));
+    return () =>
+      evs.forEach((e) => window.removeEventListener(e, unlock, opts));
+  }, []);
+
+  const playing = phase === "playing";
 
   return (
     <div className="grain relative min-h-svh bg-rb-black text-rb-white">
-      {phase === "auth" && <AuthReveal onComplete={onAuthComplete} />}
-
-      {/* Montado desde intro: precarga + unlock con gesto de scroll (Safari) */}
-      <BackgroundVideo
-        ref={videoRef}
-        mounted={videoMounted}
-        visible={videoVisible}
-      />
-
-      {phase === "intro" && (
-        <LogoMaskIntro active onComplete={onIntroComplete} />
+      {phase === "authenticating" && (
+        <AuthenticatingOverlay onComplete={onAuthComplete} />
       )}
 
-      {showContent && (
+      <BackgroundVideo
+        ref={videoRef}
+        mounted={playing}
+        visible={playing}
+        withAudio
+      />
+
+      {playing && (
         <>
           <Hero active />
           <StoryOverlays active />

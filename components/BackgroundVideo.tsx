@@ -11,34 +11,43 @@ import { ASSETS } from "@/lib/assets";
 import {
   prepareVideoEl,
   tryPlayVideo,
+  unmuteAndPlay,
   unlockVideoOnGesture,
 } from "@/lib/video";
 
 export type BackgroundVideoHandle = {
-  play: () => void;
+  play: (withAudio?: boolean) => void;
   setIntensity: (opacity: number, blurPx?: number) => void;
 };
 
 type Props = {
   mounted: boolean;
   visible: boolean;
+  /** Reproducir con sonido (tras gesto NFC / tap) */
+  withAudio?: boolean;
 };
 
 const BackgroundVideo = forwardRef<BackgroundVideoHandle, Props>(
-  function BackgroundVideo({ mounted, visible }, ref) {
+  function BackgroundVideo({ mounted, visible, withAudio = false }, ref) {
     const videoRef = useRef<HTMLVideoElement>(null);
     const wrapRef = useRef<HTMLDivElement>(null);
     const [failed, setFailed] = useState(false);
     const [showPosterFallback, setShowPosterFallback] = useState(false);
+    const audioRef = useRef(withAudio);
+
+    useEffect(() => {
+      audioRef.current = withAudio;
+    }, [withAudio]);
 
     useImperativeHandle(ref, () => ({
-      play() {
-        tryPlayVideo(videoRef.current);
+      play(nextAudio) {
+        const useAudio = nextAudio ?? audioRef.current;
+        if (useAudio) unmuteAndPlay(videoRef.current);
+        else tryPlayVideo(videoRef.current, { withAudio: false });
       },
       setIntensity(opacity: number) {
         const el = wrapRef.current;
         if (!el) return;
-        // Solo opacity — filter:blur rompe el video en Safari iOS
         el.style.opacity = String(Math.max(opacity, 0.01));
         el.style.filter = "none";
       },
@@ -49,7 +58,7 @@ const BackgroundVideo = forwardRef<BackgroundVideoHandle, Props>(
       const video = videoRef.current;
       if (!video) return;
 
-      prepareVideoEl(video);
+      prepareVideoEl(video, { withAudio: audioRef.current });
       try {
         video.load();
       } catch {
@@ -61,23 +70,20 @@ const BackgroundVideo = forwardRef<BackgroundVideoHandle, Props>(
         setShowPosterFallback(true);
       };
       const onPlaying = () => setShowPosterFallback(false);
-      const onStalled = () => {
-        // Si tras unos segundos no hay frames, mostrar poster
-        window.setTimeout(() => {
-          if (video.paused || video.readyState < 2) {
-            setShowPosterFallback(true);
-          }
-        }, 2500);
-      };
 
       video.addEventListener("error", onError);
       video.addEventListener("playing", onPlaying);
-      video.addEventListener("stalled", onStalled);
 
-      const cleanupUnlock = unlockVideoOnGesture(video);
+      const cleanupUnlock = unlockVideoOnGesture(video, {
+        withAudio: audioRef.current,
+      });
 
-      const retries = [50, 200, 600, 1500, 3000].map((ms) =>
-        window.setTimeout(() => tryPlayVideo(video), ms),
+      const retries = [50, 200, 600, 1500].map((ms) =>
+        window.setTimeout(
+          () =>
+            tryPlayVideo(video, { withAudio: audioRef.current }),
+          ms,
+        ),
       );
 
       return () => {
@@ -85,20 +91,22 @@ const BackgroundVideo = forwardRef<BackgroundVideoHandle, Props>(
         retries.forEach(clearTimeout);
         video.removeEventListener("error", onError);
         video.removeEventListener("playing", onPlaying);
-        video.removeEventListener("stalled", onStalled);
       };
     }, [mounted]);
 
     useEffect(() => {
       if (!visible) return;
-      tryPlayVideo(videoRef.current);
-      const t = window.setTimeout(() => tryPlayVideo(videoRef.current), 300);
+      if (withAudio) unmuteAndPlay(videoRef.current);
+      else tryPlayVideo(videoRef.current, { withAudio: false });
+      const t = window.setTimeout(() => {
+        if (withAudio) unmuteAndPlay(videoRef.current);
+        else tryPlayVideo(videoRef.current, { withAudio: false });
+      }, 300);
       return () => clearTimeout(t);
-    }, [visible]);
+    }, [visible, withAudio]);
 
     if (!mounted) return null;
 
-    // opacity mínima 0.01 en intro: Safari sigue decodificando el stream
     const wrapOpacity = visible ? 1 : 0.01;
 
     return (
@@ -123,9 +131,10 @@ const BackgroundVideo = forwardRef<BackgroundVideoHandle, Props>(
           poster={ASSETS.img1}
           preload="auto"
           playsInline
-          muted
           loop
           autoPlay
+          // muted solo si no hay audio; con audio el gesto NFC desbloquea
+          muted={!withAudio}
           controls={false}
           disablePictureInPicture
           disableRemotePlayback

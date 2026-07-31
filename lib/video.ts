@@ -1,41 +1,65 @@
-/** Helpers para autoplay confiable en Safari iOS / WebKit */
+/** Helpers de video — Safari / Chrome / audio post-gesto NFC */
 
 export function isLikelySafari(): boolean {
   if (typeof navigator === "undefined") return false;
   const ua = navigator.userAgent;
-  const isIOS = /iPad|iPhone|iPod/.test(ua) ||
+  const isIOS =
+    /iPad|iPhone|iPod/.test(ua) ||
     (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
   const isSafari = /^((?!chrome|android).)*safari/i.test(ua);
   return isIOS || isSafari;
 }
 
-/**
- * Safari exige muted + playsInline reales (propiedad + atributo)
- * y a menudo un gesto del usuario para desbloquear play.
- */
-export function prepareVideoEl(video: HTMLVideoElement) {
-  video.muted = true;
-  video.defaultMuted = true;
+export function prepareVideoEl(
+  video: HTMLVideoElement,
+  opts: { withAudio?: boolean } = {},
+) {
+  const withAudio = Boolean(opts.withAudio);
   video.playsInline = true;
   video.loop = true;
-  video.setAttribute("muted", "");
   video.setAttribute("playsinline", "");
   video.setAttribute("webkit-playsinline", "");
   video.setAttribute("autoplay", "");
+
+  if (withAudio) {
+    video.muted = false;
+    video.defaultMuted = false;
+    video.removeAttribute("muted");
+    video.volume = 1;
+  } else {
+    video.muted = true;
+    video.defaultMuted = true;
+    video.setAttribute("muted", "");
+  }
 }
 
-export function tryPlayVideo(video: HTMLVideoElement | null | undefined) {
+export function tryPlayVideo(
+  video: HTMLVideoElement | null | undefined,
+  opts: { withAudio?: boolean } = {},
+) {
   if (!video) return Promise.resolve();
-  prepareVideoEl(video);
+  prepareVideoEl(video, opts);
   return video.play().catch(() => {
-    /* Autoplay bloqueado hasta gesto — se reintenta en unlock */
+    // Si falla con audio, intentar muted y desmutear en el próximo gesto
+    if (opts.withAudio) {
+      prepareVideoEl(video, { withAudio: false });
+      return video.play().then(() => {
+        // Se desmuteará cuando el gesto lo permita
+      }).catch(() => {});
+    }
   });
 }
 
-/** Enlaza un gesto (touch/scroll) para desbloquear el video una vez */
+export function unmuteAndPlay(video: HTMLVideoElement | null | undefined) {
+  if (!video) return Promise.resolve();
+  prepareVideoEl(video, { withAudio: true });
+  return video.play().catch(() => {});
+}
+
+/** Desbloquea play (y audio si se pide) con el primer gesto del usuario */
 export function unlockVideoOnGesture(
   video: HTMLVideoElement | null | undefined,
-  onUnlocked?: () => void,
+  opts: { withAudio?: boolean; onUnlocked?: () => void } = {},
 ): () => void {
   if (!video || typeof window === "undefined") return () => {};
 
@@ -43,11 +67,14 @@ export function unlockVideoOnGesture(
   const unlock = () => {
     if (done) return;
     done = true;
-    tryPlayVideo(video).then(() => onUnlocked?.());
+    const run = opts.withAudio
+      ? unmuteAndPlay(video)
+      : tryPlayVideo(video, { withAudio: false });
+    run.then(() => opts.onUnlocked?.());
     cleanup();
   };
 
-  const opts: AddEventListenerOptions = { capture: true, passive: true };
+  const listenerOpts: AddEventListenerOptions = { capture: true, passive: true };
   const events = [
     "touchstart",
     "touchend",
@@ -58,12 +85,11 @@ export function unlockVideoOnGesture(
   ] as const;
 
   const cleanup = () => {
-    events.forEach((e) => window.removeEventListener(e, unlock, opts));
+    events.forEach((e) => window.removeEventListener(e, unlock, listenerOpts));
   };
 
-  events.forEach((e) => window.addEventListener(e, unlock, opts));
-  // Intento inmediato por si ya hay permiso
-  tryPlayVideo(video);
+  events.forEach((e) => window.addEventListener(e, unlock, listenerOpts));
+  tryPlayVideo(video, { withAudio: opts.withAudio });
 
   return cleanup;
 }

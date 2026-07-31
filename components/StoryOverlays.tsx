@@ -15,11 +15,6 @@ const BLOCKS = [
     body: "La corona y las iniciales RB identifican a quien eligió no aparentar — a quien carga el original.",
   },
   {
-    eyebrow: "PROV 21:31",
-    title: "Preparación tuya. Victoria más grande.",
-    body: "Bordado en la visera: el caballo se alista para el día de la batalla, mas la victoria es del Señor.",
-  },
-  {
     eyebrow: "Única",
     title: "No hay dos iguales.",
     body: "Tu Royal Boss es verificable y personal. Este certificado existe porque escaneaste tu gorra.",

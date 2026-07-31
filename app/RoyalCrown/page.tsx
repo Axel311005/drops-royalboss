@@ -11,6 +11,7 @@ export const metadata: Metadata = {
   },
 };
 
+/** Valor del chip NFC. Tap físico del SO abre esta ruta. */
 export default function RoyalCrownPage() {
   return (
     <>
