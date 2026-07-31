@@ -67,6 +67,40 @@ export default function RoyalCrownExperience() {
     return () => window.clearTimeout(t);
   }, [phase, startPlayback]);
 
+  useEffect(() => {
+    if (phase !== "playing") return;
+
+    let didActivate = false;
+
+    const activateFromGesture = () => {
+      if (didActivate) return;
+      didActivate = true;
+      // play() + unmute síncronos — obligatorio en Safari iOS
+      videoRef.current?.activateFromUserGesture();
+    };
+
+    const resumePlayback = () => {
+      videoRef.current?.play();
+    };
+
+    const touchOpts: AddEventListenerOptions = { passive: true };
+
+    // iOS Safari: solo touch/click cuentan como gesto válido para audio
+    document.addEventListener("touchstart", activateFromGesture, touchOpts);
+    document.addEventListener("touchend", activateFromGesture, touchOpts);
+    document.addEventListener("click", activateFromGesture, touchOpts);
+    window.addEventListener("scroll", resumePlayback, touchOpts);
+    window.addEventListener("wheel", resumePlayback, touchOpts);
+
+    return () => {
+      document.removeEventListener("touchstart", activateFromGesture);
+      document.removeEventListener("touchend", activateFromGesture);
+      document.removeEventListener("click", activateFromGesture);
+      window.removeEventListener("scroll", resumePlayback);
+      window.removeEventListener("wheel", resumePlayback);
+    };
+  }, [phase]);
+
   if (phase === "checking") {
     return <div className="min-h-svh bg-rb-black" />;
   }

@@ -8,13 +8,23 @@ import {
   useRef,
   useState,
   type MouseEvent,
+  type PointerEvent,
 } from "react";
 import { ASSETS } from "@/lib/assets";
+import {
+  activateFromUserGesture,
+  muteVideo,
+  playMuted,
+  playMutedSync,
+  resumeMutedIfPaused,
+} from "@/lib/video";
 
 export type BackgroundVideoHandle = {
   play: (withAudio?: boolean) => void;
   setIntensity: (opacity: number, blurPx?: number) => void;
   unmute: () => void;
+  /** Llamar solo dentro de touchstart/pointerdown/click — Safari iOS exige play() síncrono. */
+  activateFromUserGesture: () => void;
 };
 
 type Props = {
@@ -60,8 +70,7 @@ function IconUnmuted({ className }: { className?: string }) {
 
 /**
  * autoPlay + muted + playsInline → video en todos los browsers.
- * Botón mute en esquina → audio con UN solo toque (Android / iPhone / desktop).
- * @see https://imagekit.io/blog/nextjs-video-autoplay/
+ * Safari iOS: play() en gesto debe ser síncrono; rechazos de play() siempre con .catch().
  */
 const BackgroundVideo = forwardRef<BackgroundVideoHandle, Props>(
   function BackgroundVideo({ mounted, visible }, ref) {
@@ -70,59 +79,55 @@ const BackgroundVideo = forwardRef<BackgroundVideoHandle, Props>(
     const [failed, setFailed] = useState(false);
     const [muted, setMuted] = useState(true);
 
-    const setMutedState = useCallback((next: boolean) => {
+    const tryPlayMuted = useCallback(() => {
+      const video = videoRef.current;
+      if (!video || failed) return;
+      void playMuted(video);
+    }, [failed]);
+
+    const activateAudio = useCallback(() => {
       const video = videoRef.current;
       if (!video) return;
-
-      if (next) {
-        video.muted = true;
-        video.defaultMuted = true;
-        video.setAttribute("muted", "");
-        setMuted(true);
-        void video.play().catch(() => {});
-        return;
-      }
-
-      // Un mute: sincrónico en el click del botón (gesto de usuario)
-      video.muted = false;
-      video.defaultMuted = false;
-      video.removeAttribute("muted");
-      video.volume = 1;
+      activateFromUserGesture(video);
       setMuted(false);
-
-      void video.play().catch(() => {
-        // Si falla, volver a muted
-        video.muted = true;
-        video.defaultMuted = true;
-        video.setAttribute("muted", "");
-        setMuted(true);
-        void video.play().catch(() => {});
-      });
     }, []);
 
-    const toggleMute = useCallback(
+    const muteAudio = useCallback(() => {
+      const video = videoRef.current;
+      if (!video) return;
+      muteVideo(video);
+      setMuted(true);
+    }, []);
+
+    const onSoundPointerDown = useCallback(
+      (e: PointerEvent<HTMLButtonElement>) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (muted) activateAudio();
+      },
+      [muted, activateAudio],
+    );
+
+    const onSoundClick = useCallback(
       (e: MouseEvent<HTMLButtonElement>) => {
         e.preventDefault();
         e.stopPropagation();
-        setMutedState(!muted);
+        if (!muted) muteAudio();
       },
-      [muted, setMutedState],
+      [muted, muteAudio],
     );
 
     useImperativeHandle(
       ref,
       () => ({
         play() {
-          const video = videoRef.current;
-          if (!video) return;
-          if (muted) {
-            video.muted = true;
-            video.setAttribute("muted", "");
-          }
-          void video.play().catch(() => {});
+          tryPlayMuted();
         },
         unmute() {
-          setMutedState(false);
+          activateAudio();
+        },
+        activateFromUserGesture() {
+          activateAudio();
         },
         setIntensity(opacity: number) {
           const el = wrapRef.current;
@@ -131,37 +136,45 @@ const BackgroundVideo = forwardRef<BackgroundVideoHandle, Props>(
           el.style.filter = "none";
         },
       }),
-      [muted, setMutedState],
+      [activateAudio, tryPlayMuted],
     );
 
     useEffect(() => {
-      if (!mounted || !visible) return;
+      if (!mounted) return;
       const video = videoRef.current;
       if (!video) return;
 
       const onError = () => setFailed(true);
-      video.addEventListener("error", onError);
+      const onReady = () => tryPlayMuted();
+      const onVisibility = () => {
+        if (document.visibilityState === "visible") resumeMutedIfPaused(video);
+      };
 
-      video.playsInline = true;
-      video.setAttribute("playsinline", "");
-      video.setAttribute("webkit-playsinline", "");
-      video.setAttribute("x5-playsinline", "");
+      video.addEventListener("error", onError);
+      video.addEventListener("loadeddata", onReady);
+      video.addEventListener("canplay", onReady);
+      video.addEventListener("canplaythrough", onReady);
+      document.addEventListener("visibilitychange", onVisibility);
+
       video.muted = true;
       video.defaultMuted = true;
       video.setAttribute("muted", "");
       setMuted(true);
 
-      const tryPlay = () => {
-        void video.play().catch(() => {});
-      };
-      tryPlay();
-      const timers = [80, 250, 700].map((ms) => window.setTimeout(tryPlay, ms));
+      tryPlayMuted();
+      const timers = [80, 250, 700, 1500].map((ms) =>
+        window.setTimeout(tryPlayMuted, ms),
+      );
 
       return () => {
         timers.forEach(clearTimeout);
         video.removeEventListener("error", onError);
+        video.removeEventListener("loadeddata", onReady);
+        video.removeEventListener("canplay", onReady);
+        video.removeEventListener("canplaythrough", onReady);
+        document.removeEventListener("visibilitychange", onVisibility);
       };
-    }, [mounted, visible]);
+    }, [mounted, tryPlayMuted]);
 
     if (!mounted) return null;
 
@@ -171,7 +184,7 @@ const BackgroundVideo = forwardRef<BackgroundVideoHandle, Props>(
           ref={wrapRef}
           className="fixed inset-0 z-0 bg-rb-black"
           style={{
-            opacity: visible ? 1 : 0,
+            opacity: 1,
             pointerEvents: "none",
           }}
           aria-hidden={!visible}
@@ -187,11 +200,7 @@ const BackgroundVideo = forwardRef<BackgroundVideoHandle, Props>(
             <video
               ref={(el) => {
                 videoRef.current = el;
-                if (el) {
-                  el.setAttribute("playsinline", "");
-                  el.setAttribute("webkit-playsinline", "");
-                  el.setAttribute("x5-playsinline", "");
-                }
+                if (el) playMutedSync(el);
               }}
               src={ASSETS.productVideo}
               poster={ASSETS.img1}
@@ -210,8 +219,9 @@ const BackgroundVideo = forwardRef<BackgroundVideoHandle, Props>(
         {visible && (
           <button
             type="button"
-            onClick={toggleMute}
-            className="fixed bottom-[max(1.25rem,env(safe-area-inset-bottom))] right-[max(1rem,env(safe-area-inset-right))] z-[60] flex h-12 w-12 items-center justify-center rounded-full border border-white/25 bg-black/55 text-rb-white backdrop-blur-sm active:scale-95"
+            onPointerDown={onSoundPointerDown}
+            onClick={onSoundClick}
+            className="fixed bottom-[max(1.25rem,env(safe-area-inset-bottom))] right-[max(1rem,env(safe-area-inset-right))] z-[60] flex h-12 w-12 items-center justify-center rounded-full border border-white/25 bg-black/55 text-rb-white backdrop-blur-sm active:scale-95 touch-manipulation"
             aria-label={muted ? "Activar sonido" : "Silenciar"}
             aria-pressed={!muted}
           >
