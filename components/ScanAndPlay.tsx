@@ -11,17 +11,19 @@ import {
   supportsWebNfc,
 } from "@/lib/nfc";
 
-type Status = "idle" | "scanning" | "invalid" | "error";
+type Status = "idle" | "scanning" | "invalid";
 
-/**
- * Link que se manda: /
- * Si el NFC no es https://royal-boss.com/RoyalCrown → validación fallida.
- * Si coincide → /RoyalCrown
- */
+const SCAN_LABELS = [
+  "Escaneando…",
+  "Esperando…",
+  "Acercá el chip…",
+  "Leyendo…",
+] as const;
+
 export default function ScanAndPlay() {
   const router = useRouter();
   const [status, setStatus] = useState<Status>("idle");
-  const [hint, setHint] = useState("");
+  const [labelIdx, setLabelIdx] = useState(0);
   const [readValue, setReadValue] = useState("");
   const abortRef = useRef<AbortController | null>(null);
 
@@ -37,13 +39,24 @@ export default function ScanAndPlay() {
 
   const resetToIdle = useCallback(() => {
     setStatus("idle");
-    setHint("");
     setReadValue("");
+    setLabelIdx(0);
   }, []);
 
+  // Rotar textos mientras escanea
+  useEffect(() => {
+    if (status !== "scanning") return;
+    const id = window.setInterval(() => {
+      setLabelIdx((i) => (i + 1) % SCAN_LABELS.length);
+    }, 1400);
+    return () => clearInterval(id);
+  }, [status]);
+
   const startScan = useCallback(async () => {
-    setHint("");
     setReadValue("");
+    setLabelIdx(0);
+    setStatus("scanning");
+
     try {
       abortRef.current?.abort();
     } catch {
@@ -51,14 +64,9 @@ export default function ScanAndPlay() {
     }
 
     if (!supportsWebNfc()) {
-      setStatus("error");
-      setHint(
-        "Este navegador no puede abrir el lector NFC de la web. Acercá el chip al teléfono para que el sistema lo lea.",
-      );
+      // Sin Web NFC: igual mostramos la animación de espera
       return;
     }
-
-    setStatus("scanning");
 
     try {
       const reader = new window.NDEFReader();
@@ -88,7 +96,6 @@ export default function ScanAndPlay() {
             return;
           }
 
-          // Otro valor → validación fallida (no entra a RoyalCrown)
           try {
             ac.abort();
           } catch {
@@ -96,32 +103,21 @@ export default function ScanAndPlay() {
           }
           setReadValue(values[0] ?? "(sin URL legible)");
           setStatus("invalid");
-          setHint("Validación fallida");
         },
       );
-
-      reader.addEventListener("readingerror", () => {
-        setStatus("error");
-        setHint("Error al leer. Acercá de nuevo la etiqueta.");
-      });
 
       await reader.scan({ signal: ac.signal });
     } catch (err) {
       const name = err instanceof Error ? err.name : "";
       if (name === "AbortError") return;
-      setStatus("error");
-      if (name === "NotAllowedError") {
-        setHint("Tenés que permitir NFC para escanear.");
-      } else {
-        setHint("No se pudo abrir el lector NFC. Revisá que NFC esté activado.");
-      }
+      // Seguimos en animación de escaneo; el usuario puede reintentar
     }
   }, [enterRoyalCrown]);
 
   useEffect(() => () => abortRef.current?.abort(), []);
 
   return (
-    <main className="grain relative flex min-h-svh flex-col items-center justify-center bg-rb-black px-6 text-rb-white">
+    <main className="grain relative flex min-h-svh flex-col items-center justify-center overflow-hidden bg-rb-black px-6 text-rb-white">
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
         src={ASSETS.logoRoyal}
@@ -139,52 +135,111 @@ export default function ScanAndPlay() {
         Tocá escanear y acercá el chip al teléfono.
       </p>
 
-      <div className="relative mt-12 flex h-40 w-40 items-center justify-center">
-        {status === "scanning" &&
-          [0, 1, 2].map((i) => (
-            <motion.span
-              key={i}
-              className="absolute inset-0 rounded-full border border-rb-red/40"
-              initial={{ scale: 0.55, opacity: 0.5 }}
-              animate={{ scale: 1.55, opacity: 0 }}
-              transition={{
-                duration: 1.6,
-                repeat: Infinity,
-                delay: i * 0.4,
-                ease: "easeOut",
-              }}
+      {/* Radar / ondas */}
+      <div className="relative mt-12 flex h-48 w-48 items-center justify-center">
+        {status === "scanning" && (
+          <>
+            {[0, 1, 2, 3].map((i) => (
+              <motion.span
+                key={i}
+                className="absolute inset-0 rounded-full border border-rb-red/35"
+                initial={{ scale: 0.35, opacity: 0.7 }}
+                animate={{ scale: 1.7, opacity: 0 }}
+                transition={{
+                  duration: 2.2,
+                  repeat: Infinity,
+                  delay: i * 0.45,
+                  ease: "easeOut",
+                }}
+              />
+            ))}
+            <motion.div
+              className="absolute inset-[18%] rounded-full border border-dashed border-rb-silver/25"
+              animate={{ rotate: 360 }}
+              transition={{ duration: 8, repeat: Infinity, ease: "linear" }}
             />
-          ))}
-        <div
-          className={`relative z-10 flex h-24 w-24 items-center justify-center rounded-full border ${
-            status === "invalid" ? "border-rb-red bg-rb-red/15" : "border-rb-red/60"
+            <motion.div
+              className="absolute inset-[8%] rounded-full border border-rb-red/20"
+              animate={{ rotate: -360 }}
+              transition={{ duration: 12, repeat: Infinity, ease: "linear" }}
+            />
+          </>
+        )}
+
+        <motion.div
+          className={`relative z-10 flex h-28 w-28 items-center justify-center rounded-full border ${
+            status === "scanning"
+              ? "border-rb-red bg-rb-red/10"
+              : status === "invalid"
+                ? "border-rb-red bg-rb-red/15"
+                : "border-rb-red/60"
           }`}
+          animate={
+            status === "scanning"
+              ? { scale: [1, 1.06, 1] }
+              : { scale: 1 }
+          }
+          transition={
+            status === "scanning"
+              ? { duration: 1.2, repeat: Infinity, ease: "easeInOut" }
+              : {}
+          }
         >
-          <span className="font-mono text-[10px] uppercase tracking-[0.2em]">
+          <span className="font-mono text-[11px] uppercase tracking-[0.25em]">
             {status === "invalid" ? "✕" : "NFC"}
           </span>
-        </div>
+        </motion.div>
       </div>
 
-      {status === "error" && hint ? (
-        <p className="mt-8 max-w-sm text-center text-sm text-rb-red">{hint}</p>
-      ) : (
-        <p className="mt-8 min-h-[1.25rem]" />
+      {/* Texto animado Escaneando / Esperando */}
+      <div className="mt-8 flex h-8 items-center justify-center">
+        <AnimatePresence mode="wait">
+          {status === "scanning" && (
+            <motion.p
+              key={SCAN_LABELS[labelIdx]}
+              className="font-mono text-[11px] uppercase tracking-[0.35em] text-rb-silver"
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              transition={{ duration: 0.35 }}
+            >
+              {SCAN_LABELS[labelIdx]}
+            </motion.p>
+          )}
+        </AnimatePresence>
+      </div>
+
+      {/* Barra de movimiento */}
+      {status === "scanning" && (
+        <div className="relative mt-6 h-[2px] w-full max-w-[200px] overflow-hidden rounded bg-rb-silver/15">
+          <motion.div
+            className="absolute inset-y-0 w-1/3 bg-rb-red"
+            animate={{ x: ["-100%", "300%"] }}
+            transition={{ duration: 1.4, repeat: Infinity, ease: "easeInOut" }}
+          />
+        </div>
       )}
 
-      <button
-        type="button"
-        onClick={status === "invalid" ? resetToIdle : startScan}
-        className="mt-4 min-h-12 w-full max-w-xs border border-rb-red px-6 py-3 font-[family-name:var(--font-bebas)] text-lg tracking-wider text-rb-white transition-colors hover:bg-rb-red"
-      >
-        {status === "scanning"
-          ? "Escaneando…"
-          : status === "invalid"
-            ? "Volver a intentar"
-            : "Escanear"}
-      </button>
+      {status !== "scanning" && (
+        <button
+          type="button"
+          onClick={status === "invalid" ? resetToIdle : startScan}
+          className="mt-8 min-h-12 w-full max-w-xs border border-rb-red px-6 py-3 font-[family-name:var(--font-bebas)] text-lg tracking-wider text-rb-white transition-colors hover:bg-rb-red"
+        >
+          {status === "invalid" ? "Volver" : "Escanear"}
+        </button>
+      )}
 
-      {/* Overlay de validación fallida */}
+      {status === "scanning" && (
+        <button
+          type="button"
+          onClick={resetToIdle}
+          className="mt-8 font-mono text-[10px] uppercase tracking-[0.3em] text-rb-silver/70"
+        >
+          Cancelar
+        </button>
+      )}
+
       <AnimatePresence>
         {status === "invalid" && (
           <motion.div
@@ -193,11 +248,15 @@ export default function ScanAndPlay() {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
           >
-            <div className="flex h-20 w-20 items-center justify-center rounded-full border-2 border-rb-red">
+            <motion.div
+              className="flex h-20 w-20 items-center justify-center rounded-full border-2 border-rb-red"
+              initial={{ scale: 0.8 }}
+              animate={{ scale: 1 }}
+            >
               <span className="font-[family-name:var(--font-bebas)] text-4xl text-rb-red">
                 ✕
               </span>
-            </div>
+            </motion.div>
             <p className="mt-8 font-mono text-[11px] uppercase tracking-[0.35em] text-rb-red">
               Validación fallida
             </p>
