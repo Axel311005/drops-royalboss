@@ -15,16 +15,35 @@ import { hasNfcAuth, markNfcAuthenticated } from "@/lib/nfc";
 
 type Phase = "checking" | "authenticating" | "playing";
 
+function StoryCycle({
+  active,
+  videoRef,
+}: {
+  active: boolean;
+  videoRef: React.RefObject<BackgroundVideoHandle | null>;
+}) {
+  return (
+    <>
+      <div className="pointer-events-none relative z-10 h-[100svh] w-full" />
+      <Hero active={active} />
+      <StoryOverlays active={active} />
+      <DetailZoom active={active} videoRef={videoRef} />
+      <ClubFooter active={active} />
+    </>
+  );
+}
+
 /**
  * 1) Verificando / Es auténtica
  * 2) Video + badge Authentic abajo (siempre)
- * 3) Al scrollear → certificado y el resto
+ * 3) Scroll infinito sin salto visual (contenido duplicado)
  */
 export default function RoyalCrownExperience() {
   const router = useRouter();
   const [phase, setPhase] = useState<Phase>("checking");
   const videoRef = useRef<BackgroundVideoHandle>(null);
   const allowedRef = useRef(false);
+  const cycleRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (allowedRef.current) return;
@@ -80,15 +99,35 @@ export default function RoyalCrownExperience() {
       videoRef.current?.play();
     };
 
+    // Scroll infinito sin salto: 2 copias iguales; al pasar la 1ª, restamos su altura
+    let ticking = false;
+    const onScroll = () => {
+      if (ticking) return;
+      ticking = true;
+      requestAnimationFrame(() => {
+        ticking = false;
+        const cycle = cycleRef.current;
+        if (!cycle) return;
+        const h = cycle.offsetHeight;
+        if (h <= 0) return;
+
+        if (window.scrollY >= h) {
+          window.scrollTo({ top: window.scrollY - h, behavior: "auto" });
+        }
+      });
+    };
+
     const touchOpts: AddEventListenerOptions = { passive: true };
 
     document.addEventListener("touchstart", resumePlayback, touchOpts);
     window.addEventListener("scroll", resumePlayback, touchOpts);
+    window.addEventListener("scroll", onScroll, touchOpts);
     window.addEventListener("wheel", resumePlayback, touchOpts);
 
     return () => {
       document.removeEventListener("touchstart", resumePlayback);
       window.removeEventListener("scroll", resumePlayback);
+      window.removeEventListener("scroll", onScroll);
       window.removeEventListener("wheel", resumePlayback);
     };
   }, [phase]);
@@ -114,11 +153,13 @@ export default function RoyalCrownExperience() {
       {playing && (
         <>
           <AuthenticBadge />
-          <div className="pointer-events-none relative z-10 h-[100svh] w-full" />
-          <Hero active />
-          <StoryOverlays active />
-          <DetailZoom active videoRef={videoRef} />
-          <ClubFooter active />
+          <div ref={cycleRef}>
+            <StoryCycle active videoRef={videoRef} />
+          </div>
+          {/* Copia idéntica — permite loop sin que se sienta el salto */}
+          <div aria-hidden>
+            <StoryCycle active={false} videoRef={videoRef} />
+          </div>
         </>
       )}
     </div>

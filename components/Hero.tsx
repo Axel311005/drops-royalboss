@@ -64,8 +64,6 @@ export default function Hero({ active }: Props) {
     { dependencies: [active], scope: rootRef },
   );
 
-  if (!active) return null;
-
   return (
     <section
       ref={rootRef}

@@ -132,8 +132,6 @@ export default function DetailZoom({ active, videoRef }: Props) {
     };
   }, [active]);
 
-  if (!active) return null;
-
   return (
     <section ref={sectionRef} className="relative z-10 py-12 sm:py-16">
       <div className="mb-8 px-5 text-center sm:mb-10 sm:px-6">

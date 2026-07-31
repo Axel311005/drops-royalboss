@@ -72,8 +72,6 @@ export default function StoryOverlays({ active }: Props) {
     { dependencies: [active], scope: rootRef },
   );
 
-  if (!active) return null;
-
   return (
     <div ref={rootRef} className="relative z-10 px-6">
       {BLOCKS.map((block) => (
