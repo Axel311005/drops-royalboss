@@ -65,16 +65,11 @@ export default function DetailZoom({ active, videoRef }: Props) {
             trigger: section,
             start: "top 75%",
             end: "bottom 25%",
+            // Solo opacidad — blur rompe el video en Safari iOS
             onEnter: () =>
-              videoRef.current?.setIntensity(
-                reduced ? 0.2 : 0.12,
-                reduced ? 0 : 3,
-              ),
+              videoRef.current?.setIntensity(reduced ? 0.22 : 0.18, 0),
             onEnterBack: () =>
-              videoRef.current?.setIntensity(
-                reduced ? 0.2 : 0.12,
-                reduced ? 0 : 3,
-              ),
+              videoRef.current?.setIntensity(reduced ? 0.22 : 0.18, 0),
             onLeave: () => videoRef.current?.setIntensity(1, 0),
             onLeaveBack: () => videoRef.current?.setIntensity(1, 0),
           },

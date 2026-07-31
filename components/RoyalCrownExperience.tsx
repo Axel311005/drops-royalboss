@@ -20,7 +20,8 @@ export default function RoyalCrownExperience() {
 
   const onAuthComplete = useCallback(() => {
     setPhase("intro");
-    videoRef.current?.play();
+    // Montamos el video ya en intro para precargar + desbloquear con el scroll
+    requestAnimationFrame(() => videoRef.current?.play());
   }, []);
 
   const onIntroComplete = useCallback(() => {
@@ -32,16 +33,24 @@ export default function RoyalCrownExperience() {
       videoRef.current?.play();
       videoRef.current?.setIntensity(1, 0);
     });
+    // Segundo intento tras el paint (Safari)
+    window.setTimeout(() => videoRef.current?.play(), 250);
   }, []);
 
-  const showVideo = phase !== "auth";
+  const videoMounted = phase === "intro" || phase === "experience";
+  const videoVisible = phase === "experience";
   const showContent = phase === "experience";
 
   return (
-    <div className="grain relative min-h-screen bg-rb-black text-rb-white">
+    <div className="grain relative min-h-svh bg-rb-black text-rb-white">
       {phase === "auth" && <AuthReveal onComplete={onAuthComplete} />}
 
-      <BackgroundVideo ref={videoRef} active={showVideo && showContent} />
+      {/* Montado desde intro: precarga + unlock con gesto de scroll (Safari) */}
+      <BackgroundVideo
+        ref={videoRef}
+        mounted={videoMounted}
+        visible={videoVisible}
+      />
 
       {phase === "intro" && (
         <LogoMaskIntro active onComplete={onIntroComplete} />

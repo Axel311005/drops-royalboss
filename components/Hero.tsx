@@ -73,7 +73,7 @@ export default function Hero({ active }: Props) {
         ref={titleRef}
         className="mt-3 max-w-[18rem] text-center font-[family-name:var(--font-bebas)] text-[clamp(2.35rem,11.5vw,3.75rem)] leading-[0.92] tracking-wide text-rb-white drop-shadow-[0_4px_24px_rgba(0,0,0,0.9)] xs:max-w-md sm:max-w-lg"
       >
-        CERTIFICADO.
+        CERTIFICADA.
         <br />
         ORIGINAL.
         <br />
