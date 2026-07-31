@@ -88,38 +88,89 @@ export function decodeNdefRecords(message: NdefMessageLike): string[] {
     "https://",
     "tel:",
     "mailto:",
+    "ftp://anonymous:anonymous@",
+    "ftp://ftp.",
+    "ftps://",
+    "sftp://",
+    "smb://",
+    "nfs://",
+    "ftp://",
+    "dav://",
+    "news:",
+    "telnet://",
+    "imap:",
+    "rtsp://",
+    "urn:",
+    "pop:",
+    "sip:",
+    "sips:",
+    "tftp:",
+    "btspp://",
+    "btl2cap://",
+    "btgoep://",
+    "tcpobex://",
+    "irdaobex://",
+    "file://",
+    "urn:epc:id:",
+    "urn:epc:tag:",
+    "urn:epc:pat:",
+    "urn:epc:raw:",
+    "urn:epc:",
+    "urn:nfc:",
   ];
 
+  if (!message?.records?.length) {
+    return ["(etiqueta vacía)"];
+  }
+
   for (const record of message.records) {
-    if (!record.data) continue;
+    const type = record.recordType || "";
+
+    if (!record.data) {
+      out.push(`[${type || "record"} sin datos]`);
+      continue;
+    }
+
     const bytes = new Uint8Array(
       record.data.buffer,
       record.data.byteOffset,
       record.data.byteLength,
     );
 
-    if (record.recordType === "url" || record.recordType === "absolute-url") {
+    if (type === "url" || type === "absolute-url") {
       try {
-        if (record.recordType === "absolute-url") {
+        if (type === "absolute-url") {
           out.push(new TextDecoder("utf-8").decode(bytes));
         } else {
           const prefix = uriPrefixes[bytes[0]] ?? "";
           const rest = new TextDecoder("utf-8").decode(bytes.slice(1));
           out.push(prefix + rest);
         }
+        continue;
       } catch {
-        /* ignore */
+        /* fallthrough */
       }
     }
 
-    if (record.recordType === "text") {
+    if (type === "text") {
       try {
         const langLen = bytes[0] & 0x3f;
         out.push(new TextDecoder("utf-8").decode(bytes.slice(1 + langLen)));
+        continue;
       } catch {
-        /* ignore */
+        /* fallthrough */
       }
     }
+
+    // Cualquier otro tipo: intentar texto plano
+    try {
+      const raw = new TextDecoder("utf-8").decode(bytes).trim();
+      if (raw) out.push(raw);
+      else out.push(`[${type || "desconocido"}]`);
+    } catch {
+      out.push(`[${type || "binario"}]`);
+    }
   }
-  return out;
+
+  return out.length ? out : ["(sin contenido legible)"];
 }

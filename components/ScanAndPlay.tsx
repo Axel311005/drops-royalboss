@@ -26,6 +26,7 @@ export default function ScanAndPlay() {
   const [labelIdx, setLabelIdx] = useState(0);
   const [readValue, setReadValue] = useState("");
   const abortRef = useRef<AbortController | null>(null);
+  const scanIdRef = useRef(0);
 
   const enterRoyalCrown = useCallback(() => {
     markNfcAuthenticated(true);
@@ -37,13 +38,29 @@ export default function ScanAndPlay() {
     router.push("/RoyalCrown");
   }, [router]);
 
+  const markInvalid = useCallback((detail: string) => {
+    try {
+      abortRef.current?.abort();
+    } catch {
+      /* ignore */
+    }
+    setReadValue(detail);
+    setStatus("invalid");
+  }, []);
+
   const resetToIdle = useCallback(() => {
+    scanIdRef.current += 1;
+    try {
+      abortRef.current?.abort();
+    } catch {
+      /* ignore */
+    }
+    abortRef.current = null;
     setStatus("idle");
     setReadValue("");
     setLabelIdx(0);
   }, []);
 
-  // Rotar textos mientras escanea
   useEffect(() => {
     if (status !== "scanning") return;
     const id = window.setInterval(() => {
@@ -53,6 +70,7 @@ export default function ScanAndPlay() {
   }, [status]);
 
   const startScan = useCallback(async () => {
+    const myId = ++scanIdRef.current;
     setReadValue("");
     setLabelIdx(0);
     setStatus("scanning");
@@ -64,55 +82,76 @@ export default function ScanAndPlay() {
     }
 
     if (!supportsWebNfc()) {
-      // Sin Web NFC: igual mostramos la animación de espera
+      // Sin Web NFC no hay lectura web → no dejamos “Leyendo” eterno
+      window.setTimeout(() => {
+        if (scanIdRef.current !== myId) return;
+        markInvalid("No se pudo validar esta etiqueta");
+      }, 2500);
       return;
     }
+
+    await new Promise((r) => setTimeout(r, 80));
+    if (scanIdRef.current !== myId) return;
 
     try {
       const reader = new window.NDEFReader();
       const ac = new AbortController();
       abortRef.current = ac;
 
-      reader.addEventListener(
-        "reading",
-        (event: {
-          message: {
-            records: {
-              recordType: string;
-              data?: DataView;
-              encoding?: string;
-            }[];
-          };
-        }) => {
-          const values = decodeNdefRecords(event.message);
-          const ok = values.some(
-            (v) =>
-              isValidRoyalCrownUrl(v) ||
-              /royal-boss\.com\/RoyalCrown/i.test(v),
-          );
+      const onReading = (event: {
+        message?: {
+          records: {
+            recordType: string;
+            data?: DataView;
+            encoding?: string;
+          }[];
+        };
+        serialNumber?: string;
+      }) => {
+        if (scanIdRef.current !== myId) return;
 
-          if (ok) {
-            enterRoyalCrown();
-            return;
-          }
+        const values = decodeNdefRecords(
+          event.message ?? { records: [] },
+        );
+        const ok = values.some(
+          (v) =>
+            isValidRoyalCrownUrl(v) ||
+            /royal-boss\.com\/RoyalCrown/i.test(v),
+        );
 
-          try {
-            ac.abort();
-          } catch {
-            /* ignore */
-          }
-          setReadValue(values[0] ?? "(sin URL legible)");
-          setStatus("invalid");
-        },
-      );
+        if (ok) {
+          enterRoyalCrown();
+          return;
+        }
+
+        // Cualquier otro valor / vacío / tarjeta distinta → incorrecto
+        const detail =
+          values.filter(Boolean).join(" · ") ||
+          (event.serialNumber
+            ? `ID ${event.serialNumber}`
+            : "Etiqueta incorrecta");
+        markInvalid(detail);
+      };
+
+      const onReadingError = () => {
+        if (scanIdRef.current !== myId) return;
+        markInvalid("Etiqueta incorrecta");
+      };
+
+      reader.addEventListener("reading", onReading);
+      reader.addEventListener("readingerror", onReadingError);
+      // Algunos Chrome usan estas props
+      reader.onreading = onReading;
+      reader.onreadingerror = onReadingError;
 
       await reader.scan({ signal: ac.signal });
     } catch (err) {
+      if (scanIdRef.current !== myId) return;
       const name = err instanceof Error ? err.name : "";
       if (name === "AbortError") return;
-      // Seguimos en animación de escaneo; el usuario puede reintentar
+      markInvalid("No se pudo leer la etiqueta");
     }
-  }, [enterRoyalCrown]);
+  }, [enterRoyalCrown, markInvalid]);
 
   useEffect(() => () => abortRef.current?.abort(), []);
 
@@ -135,7 +174,6 @@ export default function ScanAndPlay() {
         Tocá escanear y acercá el chip al teléfono.
       </p>
 
-      {/* Radar / ondas */}
       <div className="relative mt-12 flex h-48 w-48 items-center justify-center">
         {status === "scanning" && (
           <>
@@ -175,9 +213,7 @@ export default function ScanAndPlay() {
                 : "border-rb-red/60"
           }`}
           animate={
-            status === "scanning"
-              ? { scale: [1, 1.06, 1] }
-              : { scale: 1 }
+            status === "scanning" ? { scale: [1, 1.06, 1] } : { scale: 1 }
           }
           transition={
             status === "scanning"
@@ -191,7 +227,6 @@ export default function ScanAndPlay() {
         </motion.div>
       </div>
 
-      {/* Texto animado Escaneando / Esperando */}
       <div className="mt-8 flex h-8 items-center justify-center">
         <AnimatePresence mode="wait">
           {status === "scanning" && (
@@ -209,7 +244,6 @@ export default function ScanAndPlay() {
         </AnimatePresence>
       </div>
 
-      {/* Barra de movimiento */}
       {status === "scanning" && (
         <div className="relative mt-6 h-[2px] w-full max-w-[200px] overflow-hidden rounded bg-rb-silver/15">
           <motion.div
@@ -258,24 +292,24 @@ export default function ScanAndPlay() {
               </span>
             </motion.div>
             <p className="mt-8 font-mono text-[11px] uppercase tracking-[0.35em] text-rb-red">
-              Validación fallida
+              Incorrecto
             </p>
             <h2 className="mt-3 text-center font-[family-name:var(--font-bebas)] text-3xl tracking-wide text-rb-white sm:text-4xl">
-              No es auténtica
+              Validación fallida
             </h2>
             <p className="mt-4 max-w-sm text-center text-sm leading-relaxed text-rb-silver">
-              El chip leído no corresponde a una Royal Boss Original.
+              Esta etiqueta no tiene el valor de una Royal Boss Original.
             </p>
             {readValue ? (
               <p className="mt-3 max-w-xs break-all text-center font-mono text-[9px] tracking-wide text-rb-silver/50">
-                Valor leído: {readValue}
+                Leído: {readValue}
               </p>
             ) : null}
             <button
               type="button"
               onClick={() => {
                 resetToIdle();
-                window.setTimeout(() => startScan(), 100);
+                window.setTimeout(() => startScan(), 120);
               }}
               className="mt-10 min-h-12 w-full max-w-xs border border-rb-red px-6 py-3 font-[family-name:var(--font-bebas)] text-lg tracking-wider text-rb-white hover:bg-rb-red"
             >
