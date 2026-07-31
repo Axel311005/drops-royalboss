@@ -68,18 +68,17 @@ function IconNfcWaves({ className }: { className?: string }) {
   );
 }
 
-/** Recuadro de scan — esquinas en L + icono NFC al centro */
+/** Recuadro de scan — esquinas en L + línea de escaneo animada */
 function ScanFrame({ active }: { active?: boolean }) {
   const corner =
     "pointer-events-none absolute h-10 w-10 border-white sm:h-12 sm:w-12";
   return (
     <div
-      className={`relative aspect-square w-[min(72vw,19rem)] ${
+      className={`relative aspect-square w-[min(72vw,19rem)] overflow-hidden ${
         active ? "opacity-100" : "opacity-95"
       }`}
       aria-hidden
     >
-      {/* Esquinas tipo viewfinder */}
       <span
         className={`${corner} left-0 top-0 border-l-[3px] border-t-[3px] rounded-tl-sm`}
       />
@@ -93,15 +92,37 @@ function ScanFrame({ active }: { active?: boolean }) {
         className={`${corner} bottom-0 right-0 border-b-[3px] border-r-[3px] rounded-br-sm`}
       />
 
-      {/* Marco suave interior */}
-      <div className="absolute inset-[10%] rounded-2xl border border-white/25" />
+      <div className="absolute inset-[10%] overflow-hidden rounded-2xl border border-white/25">
+        {/* Línea de scan que baja y sube */}
+        <motion.div
+          className="absolute inset-x-0 h-[2px] bg-gradient-to-r from-transparent via-rb-red to-transparent shadow-[0_0_12px_rgba(200,16,46,0.85)]"
+          initial={{ top: "8%" }}
+          animate={{ top: ["8%", "92%", "8%"] }}
+          transition={{
+            duration: active ? 1.6 : 2.4,
+            repeat: Infinity,
+            ease: "easeInOut",
+          }}
+        />
+        <motion.div
+          className="absolute inset-x-0 h-16 bg-gradient-to-b from-rb-red/25 to-transparent"
+          initial={{ top: "8%" }}
+          animate={{ top: ["8%", "70%", "8%"] }}
+          transition={{
+            duration: active ? 1.6 : 2.4,
+            repeat: Infinity,
+            ease: "easeInOut",
+          }}
+        />
+      </div>
 
       <div className="absolute inset-0 flex items-center justify-center">
-        <IconNfcWaves
-          className={`h-14 w-14 text-white/85 sm:h-16 sm:w-16 ${
-            active ? "animate-pulse" : ""
-          }`}
-        />
+        <motion.div
+          animate={{ opacity: [0.55, 1, 0.55], scale: [0.96, 1.04, 0.96] }}
+          transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
+        >
+          <IconNfcWaves className="h-14 w-14 text-white/85 sm:h-16 sm:w-16" />
+        </motion.div>
       </div>
     </div>
   );

@@ -12,7 +12,7 @@ export default function AuthenticBadge() {
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.5, delay: 0.15, ease: [0.22, 1, 0.36, 1] }}
     >
-      <div className="flex w-full max-w-[260px] flex-col items-center rounded-3xl border border-white/25 bg-white/35 px-6 py-5 shadow-xl backdrop-blur-md sm:max-w-[280px]">
+      <div className="flex w-full max-w-[260px] flex-col items-center rounded-3xl border border-white/15 bg-white/10 px-6 py-5 shadow-lg backdrop-blur-sm sm:max-w-[280px]">
         <p className="text-center text-[14px] font-medium leading-snug tracking-tight text-white drop-shadow-sm sm:text-[15px]">
           Authentic Royal Boss Product
         </p>
