@@ -17,7 +17,6 @@ export default function RoyalCrownPage() {
     <>
       <link rel="preload" as="image" href={ASSETS.logoRoyal} />
       <link rel="preload" as="image" href={ASSETS.img1} />
-      <link rel="preload" as="video" href={ASSETS.productVideo} />
       <RoyalCrownExperience />
     </>
   );

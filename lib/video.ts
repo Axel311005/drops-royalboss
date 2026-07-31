@@ -30,7 +30,7 @@ export function playMuted(video: HTMLVideoElement): Promise<boolean> {
     .catch(() => false);
 }
 
-/** play() síncrono muted — requerido dentro del stack de un gesto en Safari iOS. */
+/** play() síncrono muted — solo dentro del stack de un gesto en Safari iOS. */
 export function playMutedSync(video: HTMLVideoElement): void {
   ensureInline(video);
   video.muted = true;
@@ -40,12 +40,16 @@ export function playMutedSync(video: HTMLVideoElement): void {
 }
 
 /**
- * En un solo gesto de usuario: arranca el video y activa audio.
- * Todo síncrono (sin await/.then) para conservar el gesto en iOS Safari.
+ * Activa audio en el mismo gesto de usuario.
+ * Orden: play muted → unmute → play (todo síncrono, mismo stack).
  */
 export function activateFromUserGesture(video: HTMLVideoElement): void {
   ensureInline(video);
-  playMutedSync(video);
+
+  video.muted = true;
+  video.defaultMuted = true;
+  video.setAttribute("muted", "");
+  safePlay(video);
 
   video.muted = false;
   video.defaultMuted = false;
@@ -66,4 +70,9 @@ export function resumeMutedIfPaused(
 ) {
   if (!video || !video.paused) return;
   void playMuted(video);
+}
+
+export function isTouchDevice(): boolean {
+  if (typeof window === "undefined") return false;
+  return "ontouchstart" in window || navigator.maxTouchPoints > 0;
 }

@@ -11,6 +11,7 @@ import {
 import { ASSETS } from "@/lib/assets";
 import {
   activateFromUserGesture,
+  isTouchDevice,
   muteVideo,
   playMuted,
   playMutedSync,
@@ -85,25 +86,24 @@ const BackgroundVideo = forwardRef<BackgroundVideoHandle, Props>(
       void playMuted(video);
     }, [failed]);
 
-    const toggleSound = useCallback(() => {
+    const unmuteFromButton = useCallback(() => {
       const video = videoRef.current;
-      if (!video) return;
+      if (!video || !mutedRef.current) return;
+      // Ref primero: evita que tryPlayMuted (canplay) re-mute durante el gesto
+      setMutedState(false);
+      activateFromUserGesture(video);
+    }, [setMutedState]);
 
-      if (mutedRef.current) {
-        activateFromUserGesture(video);
-        setMutedState(false);
-      } else {
-        muteVideo(video);
-        setMutedState(true);
-      }
+    const muteFromButton = useCallback(() => {
+      const video = videoRef.current;
+      if (!video || mutedRef.current) return;
+      setMutedState(true);
+      muteVideo(video);
     }, [setMutedState]);
 
     const activateAudio = useCallback(() => {
-      const video = videoRef.current;
-      if (!video) return;
-      activateFromUserGesture(video);
-      setMutedState(false);
-    }, [setMutedState]);
+      unmuteFromButton();
+    }, [unmuteFromButton]);
 
     useImperativeHandle(
       ref,
@@ -130,28 +130,40 @@ const BackgroundVideo = forwardRef<BackgroundVideoHandle, Props>(
       [activateAudio, failed],
     );
 
-    // Listener nativo — Safari iOS no confía en eventos sintéticos de React para play()+audio
+    // Listener nativo — touch O click, nunca ambos (evita doble toggle en iOS)
     useEffect(() => {
       const btn = buttonRef.current;
       if (!btn || !visible) return;
 
-      let lastToggle = 0;
+      const touch = isTouchDevice();
 
-      const onToggle = (e: Event) => {
+      const onTouchStart = (e: TouchEvent) => {
+        e.preventDefault();
         e.stopPropagation();
-        if (Date.now() - lastToggle < 350) return;
-        lastToggle = Date.now();
-        toggleSound();
+        if (mutedRef.current) unmuteFromButton();
+        else muteFromButton();
       };
 
-      btn.addEventListener("touchstart", onToggle, { passive: true });
-      btn.addEventListener("click", onToggle);
+      const onClick = (e: MouseEvent) => {
+        e.stopPropagation();
+        if (mutedRef.current) unmuteFromButton();
+        else muteFromButton();
+      };
+
+      if (touch) {
+        btn.addEventListener("touchstart", onTouchStart, { passive: false });
+      } else {
+        btn.addEventListener("click", onClick);
+      }
 
       return () => {
-        btn.removeEventListener("touchstart", onToggle);
-        btn.removeEventListener("click", onToggle);
+        if (touch) {
+          btn.removeEventListener("touchstart", onTouchStart);
+        } else {
+          btn.removeEventListener("click", onClick);
+        }
       };
-    }, [visible, toggleSound]);
+    }, [visible, unmuteFromButton, muteFromButton]);
 
     useEffect(() => {
       if (!mounted) return;
@@ -172,9 +184,7 @@ const BackgroundVideo = forwardRef<BackgroundVideoHandle, Props>(
 
       mutedRef.current = true;
       setMutedState(true);
-      video.muted = true;
-      video.defaultMuted = true;
-      video.setAttribute("muted", "");
+      playMutedSync(video);
 
       tryPlayMuted();
       const timers = [80, 250, 700, 1500].map((ms) =>
@@ -222,10 +232,7 @@ const BackgroundVideo = forwardRef<BackgroundVideoHandle, Props>(
             />
           ) : (
             <video
-              ref={(el) => {
-                videoRef.current = el;
-                if (el) playMutedSync(el);
-              }}
+              ref={videoRef}
               src={ASSETS.productVideo}
               poster={ASSETS.img1}
               autoPlay
