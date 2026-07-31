@@ -17,8 +17,10 @@ type Status = "idle" | "scanning-nfc" | "scanning-qr" | "invalid";
 const QR_READER_ID = "rb-qr-reader";
 
 function isValidScanValue(raw: string): boolean {
+  const cleaned = raw.trim().replace(/^\uFEFF/, "");
   return (
-    isValidRoyalCrownUrl(raw) || /royal-boss\.com\/RoyalCrown/i.test(raw)
+    isValidRoyalCrownUrl(cleaned) ||
+    /royal-boss\.com\/royalcrown/i.test(cleaned)
   );
 }
 
@@ -271,14 +273,19 @@ export default function ScanAndPlay() {
         },
         (decoded) => {
           if (scanIdRef.current !== myId || handledQrRef.current) return;
-          handledQrRef.current = true;
 
           if (isValidScanValue(decoded)) {
+            handledQrRef.current = true;
             enterRoyalCrown();
             return;
           }
 
-          markInvalid(decoded || "Código QR incorrecto");
+          // Solo invalidar si hay contenido real (evitar falsos por ruido)
+          const text = decoded?.trim();
+          if (!text) return;
+
+          handledQrRef.current = true;
+          markInvalid(text);
         },
         () => {
           /* ignore frame errors */

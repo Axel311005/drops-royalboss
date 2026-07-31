@@ -18,18 +18,29 @@ export function normalizeNfcUrl(raw: string): string {
   }
 }
 
-/** El tag es válido si apunta a /RoyalCrown (con o sin www, con o sin query) */
+/** El tag/QR es válido si apunta a /RoyalCrown (con o sin www, query, mayúsculas). */
 export function isValidRoyalCrownUrl(raw: string): boolean {
+  const cleaned = raw
+    .trim()
+    .replace(/^\uFEFF/, "")
+    .replace(/[\u200B-\u200D\uFEFF]/g, "");
+
+  // Extraer URL si viene con texto alrededor
+  const urlMatch = cleaned.match(/https?:\/\/[^\s<>"']+/i);
+  const candidate = urlMatch?.[0] ?? cleaned;
+
   try {
-    const u = new URL(raw.trim());
-    const host = u.hostname.replace(/^www\./, "");
-    const path = u.pathname.replace(/\/+$/, "");
-    return (
-      (host === "royal-boss.com" || host === "localhost" || host.endsWith(".vercel.app")) &&
-      path === "/RoyalCrown"
-    );
+    const u = new URL(candidate.trim());
+    const host = u.hostname.replace(/^www\./i, "").toLowerCase();
+    const path = u.pathname.replace(/\/+$/, "").toLowerCase();
+    const hostOk =
+      host === "royal-boss.com" ||
+      host === "localhost" ||
+      host === "127.0.0.1" ||
+      host.endsWith(".vercel.app");
+    return hostOk && path === "/royalcrown";
   } catch {
-    return /royal-boss\.com\/RoyalCrown/i.test(raw);
+    return /royal-boss\.com\/royalcrown/i.test(cleaned);
   }
 }
 
