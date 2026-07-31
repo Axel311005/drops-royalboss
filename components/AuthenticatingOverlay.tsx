@@ -4,11 +4,6 @@ import { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { ASSETS } from "@/lib/assets";
 import { prefersReducedMotion } from "@/lib/animations";
-import {
-  ensureSharedVideo,
-  playMuted,
-  primeVideoFromUserGesture,
-} from "@/lib/video";
 
 type Props = {
   onComplete: () => void;
@@ -20,10 +15,6 @@ export default function AuthenticatingOverlay({ onComplete }: Props) {
   const [visible, setVisible] = useState(true);
 
   useEffect(() => {
-    // Precarga muted debajo del overlay
-    const v = ensureSharedVideo();
-    if (v) void playMuted(v);
-
     const reduced = prefersReducedMotion();
     const loadMs = reduced ? 350 : 1600;
     const holdMs = reduced ? 450 : 1000;
@@ -40,11 +31,6 @@ export default function AuthenticatingOverlay({ onComplete }: Props) {
     };
   }, [onComplete]);
 
-  // Tap durante verificación = gesto → audio listo (iPhone NFC / Android)
-  const unlockOnGesture = () => {
-    primeVideoFromUserGesture();
-  };
-
   return (
     <AnimatePresence>
       {visible && (
@@ -53,8 +39,6 @@ export default function AuthenticatingOverlay({ onComplete }: Props) {
           initial={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           transition={{ duration: 0.4 }}
-          onPointerDown={unlockOnGesture}
-          onTouchStart={unlockOnGesture}
         >
           <div className="relative flex h-40 w-40 items-center justify-center">
             {status === "loading" &&

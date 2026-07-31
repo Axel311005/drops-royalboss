@@ -53,7 +53,7 @@ export default function RoyalCrownExperience() {
 
   const startPlayback = useCallback(() => {
     videoRef.current?.setIntensity(1, 0);
-    videoRef.current?.play(true);
+    videoRef.current?.play(false);
   }, []);
 
   const onAuthComplete = useCallback(() => {
@@ -63,8 +63,7 @@ export default function RoyalCrownExperience() {
   useEffect(() => {
     if (phase !== "playing") return;
     startPlayback();
-    // Un reintento suave — BackgroundVideo ya maneja play sin spam de unmute
-    const t = window.setTimeout(startPlayback, 200);
+    const t = window.setTimeout(startPlayback, 250);
     return () => window.clearTimeout(t);
   }, [phase, startPlayback]);
 
@@ -84,18 +83,11 @@ export default function RoyalCrownExperience() {
         ref={videoRef}
         mounted={phase === "authenticating" || playing}
         visible={playing}
-        withAudio
       />
 
       {playing && (
         <>
-          {/* Primer viewport: SOLO video, sin textos */}
-          <div
-            className="relative z-10 h-[100svh] w-full"
-            aria-hidden
-          />
-
-          {/* Debajo, al scrollear: certificado y resto */}
+          <div className="pointer-events-none relative z-10 h-[100svh] w-full" />
           <Hero active />
           <StoryOverlays active />
           <DetailZoom active videoRef={videoRef} />
