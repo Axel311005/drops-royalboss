@@ -9,7 +9,7 @@ type Props = {
   onComplete: () => void;
 };
 
-/** Carga: verificando → Es auténtica → pasa al video */
+/** Verificando → Es auténtica → pasa al video */
 export default function AuthenticatingOverlay({ onComplete }: Props) {
   const [status, setStatus] = useState<"loading" | "authentic">("loading");
   const [visible, setVisible] = useState(true);

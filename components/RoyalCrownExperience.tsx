@@ -6,6 +6,7 @@ import BackgroundVideo, {
   type BackgroundVideoHandle,
 } from "@/components/BackgroundVideo";
 import AuthenticatingOverlay from "@/components/AuthenticatingOverlay";
+import AuthenticBadge from "@/components/AuthenticBadge";
 import Hero from "@/components/Hero";
 import StoryOverlays from "@/components/StoryOverlays";
 import DetailZoom from "@/components/DetailZoom";
@@ -16,7 +17,7 @@ type Phase = "checking" | "authenticating" | "playing";
 
 /**
  * 1) Verificando / Es auténtica
- * 2) Solo video a pantalla completa (sin texto)
+ * 2) Video + badge Authentic abajo (siempre)
  * 3) Al scrollear → certificado y el resto
  */
 export default function RoyalCrownExperience() {
@@ -63,8 +64,10 @@ export default function RoyalCrownExperience() {
   useEffect(() => {
     if (phase !== "playing") return;
     startPlayback();
-    const t = window.setTimeout(startPlayback, 250);
-    return () => window.clearTimeout(t);
+    const timers = [80, 250, 700].map((ms) =>
+      window.setTimeout(startPlayback, ms),
+    );
+    return () => timers.forEach(clearTimeout);
   }, [phase, startPlayback]);
 
   useEffect(() => {
@@ -72,13 +75,13 @@ export default function RoyalCrownExperience() {
 
     const resumePlayback = (e: Event) => {
       const target = e.target;
-      if (target instanceof Element && target.closest("[data-sound-btn]")) return;
+      if (target instanceof Element && target.closest("[data-sound-btn]"))
+        return;
       videoRef.current?.play();
     };
 
     const touchOpts: AddEventListenerOptions = { passive: true };
 
-    // Solo reanudar en mute — el sonido lo controla el botón
     document.addEventListener("touchstart", resumePlayback, touchOpts);
     window.addEventListener("scroll", resumePlayback, touchOpts);
     window.addEventListener("wheel", resumePlayback, touchOpts);
@@ -110,6 +113,7 @@ export default function RoyalCrownExperience() {
 
       {playing && (
         <>
+          <AuthenticBadge />
           <div className="pointer-events-none relative z-10 h-[100svh] w-full" />
           <Hero active />
           <StoryOverlays active />

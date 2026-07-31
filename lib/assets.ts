@@ -3,6 +3,7 @@
  */
 export const ASSETS = {
   logoRoyal: "/logo-royal.webp",
+  sealRbGold: "/GoldRoyal.png",
   img1: "/img1.webp",
   img2: "/img2.webp",
   img3: "/img3.webp",
