@@ -7,7 +7,6 @@ import {
   useImperativeHandle,
   useRef,
   useState,
-  type MouseEvent,
   type PointerEvent,
 } from "react";
 import { ASSETS } from "@/lib/assets";
@@ -92,29 +91,22 @@ const BackgroundVideo = forwardRef<BackgroundVideoHandle, Props>(
       setMuted(false);
     }, []);
 
-    const muteAudio = useCallback(() => {
-      const video = videoRef.current;
-      if (!video) return;
-      muteVideo(video);
-      setMuted(true);
-    }, []);
-
-    const onSoundPointerDown = useCallback(
+    const toggleSound = useCallback(
       (e: PointerEvent<HTMLButtonElement>) => {
-        e.preventDefault();
+        // No preventDefault: en iOS cancela el click y rompe el toggle mute
         e.stopPropagation();
-        if (muted) activateAudio();
-      },
-      [muted, activateAudio],
-    );
+        const video = videoRef.current;
+        if (!video) return;
 
-    const onSoundClick = useCallback(
-      (e: MouseEvent<HTMLButtonElement>) => {
-        e.preventDefault();
-        e.stopPropagation();
-        if (!muted) muteAudio();
+        if (muted) {
+          activateFromUserGesture(video);
+          setMuted(false);
+        } else {
+          muteVideo(video);
+          setMuted(true);
+        }
       },
-      [muted, muteAudio],
+      [muted],
     );
 
     useImperativeHandle(
@@ -219,8 +211,8 @@ const BackgroundVideo = forwardRef<BackgroundVideoHandle, Props>(
         {visible && (
           <button
             type="button"
-            onPointerDown={onSoundPointerDown}
-            onClick={onSoundClick}
+            onPointerDown={toggleSound}
+            onTouchStart={(e) => e.stopPropagation()}
             className="fixed bottom-[max(1.25rem,env(safe-area-inset-bottom))] right-[max(1rem,env(safe-area-inset-right))] z-[60] flex h-12 w-12 items-center justify-center rounded-full border border-white/25 bg-black/55 text-rb-white backdrop-blur-sm active:scale-95 touch-manipulation"
             aria-label={muted ? "Activar sonido" : "Silenciar"}
             aria-pressed={!muted}

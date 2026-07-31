@@ -70,32 +70,19 @@ export default function RoyalCrownExperience() {
   useEffect(() => {
     if (phase !== "playing") return;
 
-    let didActivate = false;
-
-    const activateFromGesture = () => {
-      if (didActivate) return;
-      didActivate = true;
-      // play() + unmute síncronos — obligatorio en Safari iOS
-      videoRef.current?.activateFromUserGesture();
-    };
-
     const resumePlayback = () => {
       videoRef.current?.play();
     };
 
     const touchOpts: AddEventListenerOptions = { passive: true };
 
-    // iOS Safari: solo touch/click cuentan como gesto válido para audio
-    document.addEventListener("touchstart", activateFromGesture, touchOpts);
-    document.addEventListener("touchend", activateFromGesture, touchOpts);
-    document.addEventListener("click", activateFromGesture, touchOpts);
+    // Solo reanudar en mute — el sonido lo controla el botón
+    document.addEventListener("touchstart", resumePlayback, touchOpts);
     window.addEventListener("scroll", resumePlayback, touchOpts);
     window.addEventListener("wheel", resumePlayback, touchOpts);
 
     return () => {
-      document.removeEventListener("touchstart", activateFromGesture);
-      document.removeEventListener("touchend", activateFromGesture);
-      document.removeEventListener("click", activateFromGesture);
+      document.removeEventListener("touchstart", resumePlayback);
       window.removeEventListener("scroll", resumePlayback);
       window.removeEventListener("wheel", resumePlayback);
     };
