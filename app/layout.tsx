@@ -25,11 +25,6 @@ export const metadata: Metadata = {
   title: "Royal Boss — Certificado Original",
   description:
     "Certificado digital de autenticidad Royal Boss. Original. Tuya.",
-  icons: {
-    icon: [{ url: "/logo-royal.webp", type: "image/webp" }],
-    apple: [{ url: "/logo-royal.webp", type: "image/webp" }],
-    shortcut: "/logo-royal.webp",
-  },
   openGraph: {
     title: "Royal Boss — Certificado Original",
     description: "Esta es tu Royal Boss. Original. Verificada.",

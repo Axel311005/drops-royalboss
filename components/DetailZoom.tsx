@@ -135,9 +135,6 @@ export default function DetailZoom({ active, videoRef }: Props) {
   return (
     <section ref={sectionRef} className="relative z-10 py-12 sm:py-16">
       <div className="mb-8 px-5 text-center sm:mb-10 sm:px-6">
-        <p className="font-mono text-[10px] uppercase tracking-[0.4em] text-rb-red drop-shadow-[0_2px_10px_rgba(0,0,0,0.9)]">
-          Pruebas visuales
-        </p>
         <h2 className="mt-2 font-[family-name:var(--font-bebas)] text-[clamp(1.75rem,8vw,2.5rem)] tracking-wide text-rb-white drop-shadow-[0_4px_20px_rgba(0,0,0,0.95)]">
           Los detalles del original
         </h2>
