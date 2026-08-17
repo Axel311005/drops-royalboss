@@ -390,13 +390,6 @@ export default function ScanAndPlay() {
               >
                 Escanear NFC
               </button>
-              <button
-                type="button"
-                onClick={startQrScan}
-                className="min-h-12 w-full border border-white/40 bg-black/40 px-6 py-3 font-[family-name:var(--font-bebas)] text-lg tracking-wider text-rb-white backdrop-blur-sm transition-colors hover:border-white/70"
-              >
-                Escanear QR
-              </button>
             </div>
           )}
         </div>
@@ -545,16 +538,6 @@ export default function ScanAndPlay() {
                 className="min-h-12 w-full border border-rb-red px-6 py-3 font-[family-name:var(--font-bebas)] text-lg tracking-wider text-rb-white hover:bg-rb-red"
               >
                 Escanear NFC
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  resetToIdle();
-                  window.setTimeout(() => startQrScan(), 120);
-                }}
-                className="min-h-12 w-full border border-white/40 px-6 py-3 font-[family-name:var(--font-bebas)] text-lg tracking-wider text-rb-white"
-              >
-                Escanear QR
               </button>
               <button
                 type="button"
